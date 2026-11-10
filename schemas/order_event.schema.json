@@ -1,0 +1,54 @@
+
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "E-commerce Order Lifecycle Event",
+  "description": "Schema for incoming order lifecycle events.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "order_id",
+    "event_type",
+    "event_timestamp",
+    "source"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "order_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "ORDER_PLACED",
+        "ORDER_CONFIRMED",
+        "ORDER_PACKED",
+        "ORDER_SHIPPED",
+        "OUT_FOR_DELIVERY",
+        "ORDER_DELIVERED",
+        "ORDER_CANCELLED"
+      ]
+    },
+    "event_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "order_service",
+        "warehouse",
+        "delivery_partner"
+      ]
+    }
+  }
+}

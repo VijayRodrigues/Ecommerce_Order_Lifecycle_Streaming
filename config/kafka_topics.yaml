@@ -1,0 +1,25 @@
+
+# Project-specific Kafka topic configuration
+
+kafka:
+  topics:
+    input:
+      name: ecommerce.order-lifecycle.events
+      partitions: 2
+      replication_factor: 1
+
+    order_state:
+      name: ecommerce.order-lifecycle.state
+      partitions: 2
+      replication_factor: 1
+      cleanup_policy: compact
+
+    processed_events:
+      name: ecommerce.order-lifecycle.processed
+      partitions: 2
+      replication_factor: 1
+
+    exceptions:
+      name: ecommerce.order-lifecycle.exceptions
+      partitions: 2
+      replication_factor: 1
