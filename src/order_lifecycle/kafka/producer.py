@@ -4,8 +4,10 @@ import json
 import logging
 import time
 
+from datetime import datetime, timedelta, timezone
+
 from kafka import KafkaProducer
-from order_lifecycle.generator.event_generator import generate_scenario
+from order_lifecycle.generator.event_generator import LIFECYCLE, generate_scenario
 
 
 BOOTSTRAP_SERVERS = "localhost:9092"
@@ -67,6 +69,16 @@ def main():
     if args.interval <= 0:
         parser.error("--interval must be greater than zero")
 
+    if args.scenario == "continuous":
+        step = timedelta(seconds=args.interval)
+        cursor = (
+            datetime.now(timezone.utc).replace(microsecond=0)
+            - step * (len(LIFECYCLE) - 1)
+        )
+    else:
+        step = None
+        cursor = None
+
     producer = KafkaProducer(
         bootstrap_servers=BOOTSTRAP_SERVERS,
         key_serializer=None,
@@ -79,15 +91,20 @@ def main():
         logger.info("Connected to Kafka at %s", BOOTSTRAP_SERVERS)
 
         while True:
-            scenario = (
-                "normal_flow"
-                if args.scenario == "continuous"
-                else args.scenario
-            )
+            if args.scenario == "continuous":
+                events = generate_scenario(
+                    "normal_flow",
+                    start_time=cursor,
+                    step=step
+                )
+                cursor += step * len(events)
+            else:
+                events = generate_scenario(args.scenario)
 
-            events = generate_scenario(scenario)
+            for index, event in enumerate(events):
+                if args.scenario == "late_events" and index == len(events) - 1:
+                    time.sleep(max(args.interval, 1.0))
 
-            for event in events:
                 publish_event(producer, event)
 
                 if args.scenario == "continuous":
