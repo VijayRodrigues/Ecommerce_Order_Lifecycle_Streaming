@@ -1,0 +1,7 @@
+[project]
+name = "ecommerce-order-lifecycle-streaming"
+version = "0.0.0"
+description = "E-commerce Order Lifecycle and Event Processing"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []

@@ -1,0 +1,9 @@
+# event_generator.yaml
+#
+# Purpose: configuration for the synthetic order-lifecycle event generator
+# (event mix, timing, scenario selection and output targets).
+#
+# TODO: Define generator settings once the event contract and scenarios are
+# approved.
+#
+# Intentionally left without configuration values at the scaffolding stage.

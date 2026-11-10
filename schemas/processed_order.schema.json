@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Processed Order",
+  "description": "Placeholder for the processed order data contract. TODO: define the final schema once the data contract is approved.",
+  "type": "object"
+}
