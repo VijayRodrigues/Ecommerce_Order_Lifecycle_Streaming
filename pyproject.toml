@@ -1,7 +1,17 @@
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ecommerce-order-lifecycle-streaming"
-version = "0.0.0"
-description = "E-commerce Order Lifecycle and Event Processing"
+version = "0.1.0"
+description = "Real-time e-commerce order lifecycle processing using Kafka and PyFlink"
 readme = "README.md"
-requires-python = ">=3.11"
-dependencies = []
+requires-python = ">=3.10"
+dependencies = [
+    "kafka-python>=2.2,<3.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
