@@ -1,6 +1,108 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Processed Order",
-  "description": "Placeholder for the processed order data contract. TODO: define the final schema once the data contract is approved.",
-  "type": "object"
+  "title": "Processed Order Event",
+  "description": "Accepted lifecycle event emitted to the processed topic with event-time duration fields and, for delivered orders, event-time total delivery duration.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_id",
+    "order_id",
+    "event_type",
+    "event_timestamp",
+    "source",
+    "processing_status",
+    "previous_status",
+    "current_status",
+    "previous_event_timestamp",
+    "current_event_timestamp",
+    "stage_duration_seconds",
+    "stage_duration_minutes",
+    "processed_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "event_id": { "type": "string", "format": "uuid" },
+    "order_id": { "type": "string", "minLength": 1 },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "ORDER_PLACED",
+        "ORDER_CONFIRMED",
+        "ORDER_PACKED",
+        "ORDER_SHIPPED",
+        "OUT_FOR_DELIVERY",
+        "ORDER_DELIVERED",
+        "ORDER_CANCELLED"
+      ]
+    },
+    "event_timestamp": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "string",
+      "enum": ["order_service", "warehouse", "delivery_partner", "system"]
+    },
+    "processing_status": { "type": "string", "const": "ACCEPTED" },
+    "previous_status": {
+      "type": ["string", "null"],
+      "enum": [
+        null,
+        "ORDER_PLACED",
+        "ORDER_CONFIRMED",
+        "ORDER_PACKED",
+        "ORDER_SHIPPED",
+        "OUT_FOR_DELIVERY",
+        "ORDER_DELIVERED",
+        "ORDER_CANCELLED"
+      ]
+    },
+    "current_status": {
+      "type": "string",
+      "enum": [
+        "ORDER_PLACED",
+        "ORDER_CONFIRMED",
+        "ORDER_PACKED",
+        "ORDER_SHIPPED",
+        "OUT_FOR_DELIVERY",
+        "ORDER_DELIVERED",
+        "ORDER_CANCELLED"
+      ]
+    },
+    "previous_event_timestamp": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Event timestamp of the immediately preceding accepted lifecycle event; null for the first ORDER_PLACED event."
+    },
+    "current_event_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Event timestamp of the accepted lifecycle transition."
+    },
+    "stage_duration_seconds": {
+      "type": ["number", "null"],
+      "description": "Event-time duration in seconds between previous_event_timestamp and current_event_timestamp; null for the first ORDER_PLACED event."
+    },
+    "stage_duration_minutes": {
+      "type": ["number", "null"],
+      "description": "Event-time duration in minutes between previous_event_timestamp and current_event_timestamp; null for the first ORDER_PLACED event."
+    },
+    "order_placed_timestamp": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Event timestamp of ORDER_PLACED; present for ORDER_DELIVERED records."
+    },
+    "order_delivered_timestamp": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Event timestamp of ORDER_DELIVERED; present for ORDER_DELIVERED records."
+    },
+    "total_delivery_duration_seconds": {
+      "type": ["number", "null"],
+      "description": "Event-time total delivery duration in seconds; present for ORDER_DELIVERED records only."
+    },
+    "total_delivery_duration_minutes": {
+      "type": ["number", "null"],
+      "description": "Event-time total delivery duration in minutes; present for ORDER_DELIVERED records only."
+    },
+    "processed_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": true
 }

@@ -1,6 +1,7 @@
 
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,11 @@ from pyflink.common.serialization import (
     SimpleStringSchema,
 )
 from pyflink.common.watermark_strategy import TimestampAssigner
-from pyflink.datastream import StreamExecutionEnvironment, OutputTag
+from pyflink.datastream import (
+    StreamExecutionEnvironment,
+    OutputTag,
+    TimeDomain,
+)
 from pyflink.datastream.connectors.base import DeliveryGuarantee
 from pyflink.datastream.connectors.kafka import (
     KafkaSource,
@@ -50,6 +55,28 @@ KAFKA_RECORD_TYPE = Types.ROW_NAMED(
 )
 
 ALLOWED_LATENESS_SECONDS = 300
+
+STAGE_DELAY_CONFIG_ENV = "ORDER_LIFECYCLE_PROCESSING_RULES"
+STAGE_DELAY_CONFIG_FILENAME = "processing_rules.json"
+STAGE_DELAY_CONFIG_KEY = "stage_delay_thresholds_seconds"
+
+TERMINAL_STATUSES = {
+    "ORDER_DELIVERED",
+    "ORDER_CANCELLED",
+}
+
+STAGE_DELAY_ALERT_TYPE = "STAGE_DELAYED"
+DELIVERY_DELAY_ALERT_TYPE = "ORDER_DELIVERY_DELAYED"
+DELIVERY_DELAY_STATUS = "OUT_FOR_DELIVERY"
+DELAY_ALERT_CATEGORY = "DELAY_ALERTS"
+
+EXPECTED_STAGE_DELAYS = {
+    "ORDER_PLACED": "ORDER_CONFIRMED",
+    "ORDER_CONFIRMED": "ORDER_PACKED",
+    "ORDER_PACKED": "ORDER_SHIPPED",
+    "ORDER_SHIPPED": "OUT_FOR_DELIVERY",
+    "OUT_FOR_DELIVERY": "ORDER_DELIVERED",
+}
 
 WATERMARK_HEARTBEAT = "WATERMARK_HEARTBEAT"
 
@@ -134,6 +161,11 @@ STATE_UPDATES = OutputTag(
     Types.STRING(),
 )
 
+DELAY_ALERTS = OutputTag(
+    "delay-alerts",
+    Types.STRING(),
+)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -143,6 +175,50 @@ def parse_event_timestamp(timestamp):
         timestamp.replace("Z", "+00:00")
     )
     return int(parsed.timestamp() * 1000)
+
+
+def iso_from_millis(timestamp_ms):
+    return (
+        datetime.fromtimestamp(
+            timestamp_ms / 1000,
+            tz=timezone.utc,
+        )
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def calculate_duration(previous_timestamp, current_timestamp):
+    if previous_timestamp is None or current_timestamp is None:
+        return None, None
+
+    seconds = round(
+        (
+            parse_event_timestamp(current_timestamp)
+            - parse_event_timestamp(previous_timestamp)
+        )
+        / 1000.0,
+        3,
+    )
+
+    return seconds, round(seconds / 60.0, 3)
+
+
+def build_delivery_duration(
+    order_placed_timestamp,
+    order_delivered_timestamp,
+):
+    seconds, minutes = calculate_duration(
+        order_placed_timestamp,
+        order_delivered_timestamp,
+    )
+
+    return {
+        "order_placed_timestamp": order_placed_timestamp,
+        "order_delivered_timestamp": order_delivered_timestamp,
+        "total_delivery_duration_seconds": seconds,
+        "total_delivery_duration_minutes": minutes,
+    }
 
 
 def is_business_event(value):
@@ -155,6 +231,134 @@ def utc_now_iso():
         .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z")
     )
+
+
+def resolve_processing_rules_path(path=None):
+    if path is not None:
+        return Path(path)
+
+    env_path = os.environ.get(STAGE_DELAY_CONFIG_ENV)
+
+    if env_path:
+        return Path(env_path)
+
+    job_path = Path(__file__).resolve()
+    candidates = [
+        job_path.parent
+        / "config"
+        / STAGE_DELAY_CONFIG_FILENAME,
+    ]
+
+    if len(job_path.parents) > 3:
+        candidates.append(
+            job_path.parents[3]
+            / "config"
+            / STAGE_DELAY_CONFIG_FILENAME
+        )
+
+    candidates.append(
+        Path.cwd() / "config" / STAGE_DELAY_CONFIG_FILENAME
+    )
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+
+    raise FileNotFoundError(
+        "Could not find processing rules configuration"
+    )
+
+
+def validate_processing_rules(config):
+    if not isinstance(config, dict):
+        raise ValueError(
+            "Processing rules must be a JSON object"
+        )
+
+    thresholds = config.get(STAGE_DELAY_CONFIG_KEY)
+
+    if not isinstance(thresholds, dict):
+        raise ValueError(
+            f"Missing object: {STAGE_DELAY_CONFIG_KEY}"
+        )
+
+    expected_keys = {
+        f"{from_status}->{to_status}"
+        for from_status, to_status in EXPECTED_STAGE_DELAYS.items()
+    }
+
+    missing_keys = expected_keys - set(thresholds)
+    unexpected_keys = set(thresholds) - expected_keys
+
+    if missing_keys:
+        raise ValueError(
+            f"Missing stage delay thresholds: {sorted(missing_keys)}"
+        )
+
+    if unexpected_keys:
+        raise ValueError(
+            "Unexpected stage delay thresholds: "
+            f"{sorted(unexpected_keys)}"
+        )
+
+    normalized = {}
+
+    for from_status, to_status in EXPECTED_STAGE_DELAYS.items():
+        key = f"{from_status}->{to_status}"
+        threshold = thresholds[key]
+
+        if isinstance(threshold, bool) or not isinstance(
+            threshold,
+            int,
+        ):
+            raise ValueError(
+                f"Threshold for {key} must be an integer "
+                "number of seconds"
+            )
+
+        if threshold <= 0:
+            raise ValueError(
+                f"Threshold for {key} must be greater than zero"
+            )
+
+        normalized[from_status] = {
+            "next_status": to_status,
+            "threshold_seconds": threshold,
+        }
+
+    return normalized
+
+
+def load_processing_rules(path=None):
+    config_path = resolve_processing_rules_path(path)
+
+    try:
+        with config_path.open(encoding="utf-8") as handle:
+            config = json.load(handle)
+
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(
+            f"Unable to load processing rules from {config_path}: "
+            f"{error}"
+        ) from error
+
+    return validate_processing_rules(config)
+
+
+def get_stage_delay_threshold(processing_rules, status):
+    rule = processing_rules.get(status)
+
+    if rule is None:
+        return None
+
+    return rule["threshold_seconds"]
+
+
+def get_delay_alert_type(status):
+    if status == DELIVERY_DELAY_STATUS:
+        return DELIVERY_DELAY_ALERT_TYPE
+
+    return STAGE_DELAY_ALERT_TYPE
 
 
 def extract_partial_ids(raw_event):
@@ -199,8 +403,19 @@ def to_kafka_record(value):
     return Row(select_record_key(record), value)
 
 
-def build_state_update(event, previous_status, current_status):
-    return {
+def build_state_update(
+    event,
+    previous_status,
+    current_status,
+    previous_event_timestamp=None,
+    order_placed_timestamp=None,
+):
+    stage_seconds, stage_minutes = calculate_duration(
+        previous_event_timestamp,
+        event["event_timestamp"],
+    )
+
+    state = {
         "order_id": event["order_id"],
         "current_status": current_status,
         "previous_status": previous_status,
@@ -208,18 +423,57 @@ def build_state_update(event, previous_status, current_status):
         "last_event_type": event["event_type"],
         "last_event_timestamp": event["event_timestamp"],
         "last_source": event["source"],
+        "previous_event_timestamp": previous_event_timestamp,
+        "current_event_timestamp": event["event_timestamp"],
+        "stage_duration_seconds": stage_seconds,
+        "stage_duration_minutes": stage_minutes,
         "updated_at": utc_now_iso(),
     }
 
+    if current_status == "ORDER_DELIVERED":
+        state.update(
+            build_delivery_duration(
+                order_placed_timestamp,
+                event["event_timestamp"],
+            )
+        )
 
-def build_processed_event(event, previous_status, current_status):
-    return {
+    return state
+
+
+def build_processed_event(
+    event,
+    previous_status,
+    current_status,
+    previous_event_timestamp=None,
+    order_placed_timestamp=None,
+):
+    stage_seconds, stage_minutes = calculate_duration(
+        previous_event_timestamp,
+        event["event_timestamp"],
+    )
+
+    processed = {
         **event,
         "processing_status": "ACCEPTED",
         "previous_status": previous_status,
         "current_status": current_status,
+        "previous_event_timestamp": previous_event_timestamp,
+        "current_event_timestamp": event["event_timestamp"],
+        "stage_duration_seconds": stage_seconds,
+        "stage_duration_minutes": stage_minutes,
         "processed_at": utc_now_iso(),
     }
+
+    if current_status == "ORDER_DELIVERED":
+        processed.update(
+            build_delivery_duration(
+                order_placed_timestamp,
+                event["event_timestamp"],
+            )
+        )
+
+    return processed
 
 
 def build_malformed_exception(raw_event, error):
@@ -281,6 +535,31 @@ def build_invalid_transition_exception(
         "previous_status": previous_status,
         "attempted_event": attempted_event,
         "failed_at": utc_now_iso(),
+    }
+
+
+def build_stage_delay_alert(
+    order_id,
+    current_status,
+    stage_started_at,
+    elapsed_seconds,
+    threshold_seconds,
+    alert_type,
+    stage_started_processing_at=None,
+):
+    return {
+        "exception_type": alert_type,
+        "exception_category": DELAY_ALERT_CATEGORY,
+        "alert_type": alert_type,
+        "order_id": order_id,
+        "current_status": current_status,
+        "stage_started_at": stage_started_at,
+        "stage_started_processing_at": (
+            stage_started_processing_at
+        ),
+        "elapsed_seconds": round(elapsed_seconds, 3),
+        "threshold_seconds": threshold_seconds,
+        "alerted_at": utc_now_iso(),
     }
 
 
@@ -420,6 +699,13 @@ class DeduplicateEvents(KeyedProcessFunction):
 
 class ValidateLifecycle(KeyedProcessFunction):
 
+    def __init__(self, processing_rules=None):
+        self.processing_rules = (
+            processing_rules
+            if processing_rules is not None
+            else load_processing_rules()
+        )
+
     def open(self, runtime_context):
         status_descriptor = ValueStateDescriptor(
             "current_order_status",
@@ -431,12 +717,57 @@ class ValidateLifecycle(KeyedProcessFunction):
             Types.STRING(),
         )
 
+        last_event_descriptor = ValueStateDescriptor(
+            "last_accepted_event_timestamp",
+            Types.STRING(),
+        )
+
+        placed_descriptor = ValueStateDescriptor(
+            "order_placed_timestamp",
+            Types.STRING(),
+        )
+
+        stage_started_descriptor = ValueStateDescriptor(
+            "stage_started_processing_ms",
+            Types.LONG(),
+        )
+
+        alert_deadline_descriptor = ValueStateDescriptor(
+            "stage_alert_deadline_ms",
+            Types.LONG(),
+        )
+
+        alert_sent_descriptor = ValueStateDescriptor(
+            "stage_alert_sent",
+            Types.BOOLEAN(),
+        )
+
         self.current_status = runtime_context.get_state(
             status_descriptor
         )
 
         self.pending_events = runtime_context.get_list_state(
             pending_descriptor
+        )
+
+        self.last_accepted_event_timestamp = (
+            runtime_context.get_state(last_event_descriptor)
+        )
+
+        self.order_placed_timestamp = runtime_context.get_state(
+            placed_descriptor
+        )
+
+        self.stage_started_processing_ms = (
+            runtime_context.get_state(stage_started_descriptor)
+        )
+
+        self.stage_alert_deadline_ms = runtime_context.get_state(
+            alert_deadline_descriptor
+        )
+
+        self.stage_alert_sent = runtime_context.get_state(
+            alert_sent_descriptor
         )
 
     def process_element(self, value, ctx):
@@ -466,6 +797,20 @@ class ValidateLifecycle(KeyedProcessFunction):
         )
 
     def on_timer(self, timestamp, ctx):
+        if ctx.time_domain() == TimeDomain.EVENT_TIME:
+            yield from self._process_due_events(
+                timestamp,
+                ctx,
+            )
+            return
+
+        if ctx.time_domain() == TimeDomain.PROCESSING_TIME:
+            yield from self._handle_delay_alert(
+                timestamp,
+                ctx,
+            )
+
+    def _process_due_events(self, timestamp, ctx):
         pending = list(self.pending_events.get())
 
         due_events = []
@@ -515,26 +860,203 @@ class ValidateLifecycle(KeyedProcessFunction):
 
                 continue
 
-            self.current_status.update(event_type)
+            yield from self._accept_event(event, ctx)
 
-            state_update = build_state_update(
-                event,
-                previous_status,
-                event_type,
+    def _accept_event(self, event, ctx):
+        previous_status = self.current_status.value()
+        previous_event_timestamp = (
+            self.last_accepted_event_timestamp.value()
+        )
+        order_placed_timestamp = (
+            self.order_placed_timestamp.value()
+        )
+        event_type = event["event_type"]
+
+        self._cancel_delay_timer(ctx)
+
+        if event_type == "ORDER_PLACED":
+            order_placed_timestamp = event["event_timestamp"]
+            self.order_placed_timestamp.update(
+                order_placed_timestamp
             )
 
-            yield STATE_UPDATES, json.dumps(state_update)
+        self.current_status.update(event_type)
+        self.last_accepted_event_timestamp.update(
+            event["event_timestamp"]
+        )
 
-            result = build_processed_event(
-                event,
-                previous_status,
-                event_type,
+        state_update = build_state_update(
+            event,
+            previous_status,
+            event_type,
+            previous_event_timestamp=previous_event_timestamp,
+            order_placed_timestamp=order_placed_timestamp,
+        )
+
+        yield STATE_UPDATES, json.dumps(state_update)
+
+        result = build_processed_event(
+            event,
+            previous_status,
+            event_type,
+            previous_event_timestamp=previous_event_timestamp,
+            order_placed_timestamp=order_placed_timestamp,
+        )
+
+        yield json.dumps(result)
+
+        if event_type not in TERMINAL_STATUSES:
+            self._schedule_delay_timer(event_type, ctx)
+
+    def _schedule_delay_timer(self, status, ctx):
+        threshold = get_stage_delay_threshold(
+            self.processing_rules,
+            status,
+        )
+
+        if threshold is None:
+            return
+
+        processing_now = (
+            ctx.timer_service().current_processing_time()
+        )
+        deadline = processing_now + (threshold * 1000)
+
+        self.stage_started_processing_ms.update(
+            processing_now
+        )
+        self.stage_alert_deadline_ms.update(deadline)
+        self.stage_alert_sent.update(False)
+
+        ctx.timer_service().register_processing_time_timer(
+            deadline
+        )
+
+    def _cancel_delay_timer(self, ctx):
+        deadline = self.stage_alert_deadline_ms.value()
+
+        if deadline is not None:
+            ctx.timer_service().delete_processing_time_timer(
+                deadline
             )
 
-            yield json.dumps(result)
+        self.stage_alert_deadline_ms.clear()
+        self.stage_alert_sent.clear()
+        self.stage_started_processing_ms.clear()
+
+    def _handle_delay_alert(self, timestamp, ctx):
+        if self.stage_alert_deadline_ms.value() != timestamp:
+            return
+
+        status = self.current_status.value()
+
+        self.stage_alert_deadline_ms.clear()
+
+        if status is None or status in TERMINAL_STATUSES:
+            self.stage_alert_sent.clear()
+            self.stage_started_processing_ms.clear()
+            return
+
+        if self.stage_alert_sent.value() is True:
+            return
+
+        threshold = get_stage_delay_threshold(
+            self.processing_rules,
+            status,
+        )
+
+        if threshold is None:
+            return
+
+        stage_started_at = (
+            self.last_accepted_event_timestamp.value()
+        )
+        stage_started_processing_ms = (
+            self.stage_started_processing_ms.value()
+        )
+
+        if (
+            stage_started_at is None
+            or stage_started_processing_ms is None
+        ):
+            return
+
+        if self._stage_completed_within_event_time(
+            status,
+            stage_started_at,
+            threshold,
+        ):
+            self.stage_alert_sent.update(True)
+            self.stage_started_processing_ms.clear()
+            return
+
+        processing_now = (
+            ctx.timer_service().current_processing_time()
+        )
+        elapsed_seconds = max(
+            0.0,
+            (
+                processing_now
+                - stage_started_processing_ms
+            )
+            / 1000.0,
+        )
+
+        alert = build_stage_delay_alert(
+            order_id=ctx.get_current_key(),
+            current_status=status,
+            stage_started_at=stage_started_at,
+            stage_started_processing_at=iso_from_millis(
+                stage_started_processing_ms
+            ),
+            elapsed_seconds=elapsed_seconds,
+            threshold_seconds=threshold,
+            alert_type=get_delay_alert_type(status),
+        )
+
+        self.stage_alert_sent.update(True)
+        self.stage_started_processing_ms.clear()
+
+        yield DELAY_ALERTS, json.dumps(alert)
+
+    def _stage_completed_within_event_time(
+        self,
+        status,
+        stage_started_at,
+        threshold_seconds,
+    ):
+        stage_started_ms = parse_event_timestamp(
+            stage_started_at
+        )
+        stage_limit_ms = (
+            stage_started_ms + (threshold_seconds * 1000)
+        )
+        allowed = ALLOWED_TRANSITIONS.get(status, set())
+
+        for value in self.pending_events.get():
+            event = json.loads(value)
+            event_type = event["event_type"]
+
+            if event_type not in allowed:
+                continue
+
+            if event_type == "ORDER_CANCELLED":
+                return True
+
+            if (
+                parse_event_timestamp(
+                    event["event_timestamp"]
+                )
+                <= stage_limit_ms
+            ):
+                return True
+
+        return False
 
 
 def main():
+
+    processing_rules = load_processing_rules()
 
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
@@ -609,7 +1131,7 @@ def main():
             lambda value: json.loads(value)["order_id"]
         )
         .process(
-            ValidateLifecycle(),
+            ValidateLifecycle(processing_rules),
             output_type=Types.STRING(),
         )
     )
@@ -622,9 +1144,14 @@ def main():
         STATE_UPDATES
     )
 
+    delay_alerts = lifecycle_results.get_side_output(
+        DELAY_ALERTS
+    )
+
     lifecycle_results.print("LIFECYCLE_RESULTS")
     state_updates.print("ORDER_STATE_UPDATES")
     lifecycle_exceptions.print("LIFECYCLE_EXCEPTIONS")
+    delay_alerts.print("DELAY_ALERTS")
     malformed_events.print("MALFORMED_EVENTS")
     duplicate_events.print("DUPLICATE_EVENTS")
 
@@ -643,7 +1170,11 @@ def main():
 
     exception_records = (
         malformed_events
-        .union(duplicate_events, lifecycle_exceptions)
+        .union(
+            duplicate_events,
+            lifecycle_exceptions,
+            delay_alerts,
+        )
         .map(
             to_kafka_record,
             output_type=KAFKA_RECORD_TYPE,

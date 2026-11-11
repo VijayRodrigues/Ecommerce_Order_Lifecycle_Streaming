@@ -1,9 +1,0 @@
-# processing_rules.yaml
-#
-# Purpose: configuration for order lifecycle processing rules (valid state
-# transitions, deduplication and ordering behaviour, duration thresholds and
-# delay detection settings).
-#
-# TODO: Define rules once the business requirements are finalised.
-#
-# Intentionally left without configuration values at the scaffolding stage.

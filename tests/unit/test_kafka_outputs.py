@@ -16,14 +16,20 @@ class FakeValueState:
     def update(self, value):
         self._value = value
 
+    def clear(self):
+        self._value = None
+
 
 class FakeListState:
 
-    def __init__(self, values):
-        self._values = list(values)
+    def __init__(self, values=None):
+        self._values = list(values or [])
 
     def get(self):
         return iter(self._values)
+
+    def add(self, value):
+        self._values.append(value)
 
     def update(self, values):
         self._values = list(values)
@@ -31,20 +37,53 @@ class FakeListState:
 
 class FakeTimerService:
 
-    def __init__(self, watermark):
+    def __init__(self, watermark, processing_time=1000000):
         self._watermark = watermark
+        self._processing_time = processing_time
+        self.event_timers = []
+        self.processing_timers = []
+        self.deleted_processing_timers = []
 
     def current_watermark(self):
         return self._watermark
 
+    def current_processing_time(self):
+        return self._processing_time
+
+    def register_event_time_timer(self, timestamp):
+        self.event_timers.append(timestamp)
+
+    def register_processing_time_timer(self, timestamp):
+        self.processing_timers.append(timestamp)
+
+    def delete_processing_time_timer(self, timestamp):
+        self.deleted_processing_timers.append(timestamp)
+
 
 class FakeContext:
 
-    def __init__(self, watermark):
-        self._timer_service = FakeTimerService(watermark)
+    def __init__(
+        self,
+        watermark,
+        processing_time=1000000,
+        current_key="ORD-TEST-1",
+        time_domain="EVENT_TIME",
+    ):
+        self._timer_service = FakeTimerService(
+            watermark,
+            processing_time,
+        )
+        self._current_key = current_key
+        self._time_domain = time_domain
 
     def timer_service(self):
         return self._timer_service
+
+    def get_current_key(self):
+        return self._current_key
+
+    def time_domain(self):
+        return self._time_domain
 
 
 def build_event(
@@ -376,8 +415,22 @@ class ExceptionRoutingTests(unittest.TestCase):
         lifecycle.pending_events = FakeListState(
             [json.dumps(event)]
         )
+        lifecycle.last_accepted_event_timestamp = (
+            FakeValueState(None)
+        )
+        lifecycle.order_placed_timestamp = FakeValueState(None)
+        lifecycle.stage_started_processing_ms = (
+            FakeValueState(None)
+        )
+        lifecycle.stage_alert_deadline_ms = FakeValueState(None)
+        lifecycle.stage_alert_sent = FakeValueState(None)
 
-        output = list(lifecycle.on_timer(timestamp, None))
+        output = list(
+            lifecycle.on_timer(
+                timestamp,
+                FakeContext(watermark=timestamp),
+            )
+        )
 
         self.assertEqual(len(output), 2)
 
@@ -412,8 +465,24 @@ class ExceptionRoutingTests(unittest.TestCase):
         lifecycle.pending_events = FakeListState(
             [json.dumps(event)]
         )
+        lifecycle.last_accepted_event_timestamp = (
+            FakeValueState("2026-01-01T11:50:00Z")
+        )
+        lifecycle.order_placed_timestamp = FakeValueState(
+            "2026-01-01T11:50:00Z"
+        )
+        lifecycle.stage_started_processing_ms = (
+            FakeValueState(None)
+        )
+        lifecycle.stage_alert_deadline_ms = FakeValueState(None)
+        lifecycle.stage_alert_sent = FakeValueState(None)
 
-        output = list(lifecycle.on_timer(timestamp, None))
+        output = list(
+            lifecycle.on_timer(
+                timestamp,
+                FakeContext(watermark=timestamp),
+            )
+        )
 
         self.assertEqual(len(output), 1)
 

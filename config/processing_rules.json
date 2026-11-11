@@ -1,0 +1,11 @@
+{
+  "description": "Illustrative, configurable stage-delay thresholds for operational order monitoring. These values are business assumptions for this project, not universal industry standards. Tune them for the real fulfilment process.",
+  "time_unit": "seconds",
+  "stage_delay_thresholds_seconds": {
+    "ORDER_PLACED->ORDER_CONFIRMED": 900,
+    "ORDER_CONFIRMED->ORDER_PACKED": 3600,
+    "ORDER_PACKED->ORDER_SHIPPED": 7200,
+    "ORDER_SHIPPED->OUT_FOR_DELIVERY": 14400,
+    "OUT_FOR_DELIVERY->ORDER_DELIVERED": 10800
+  }
+}

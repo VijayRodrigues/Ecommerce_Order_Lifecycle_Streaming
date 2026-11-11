@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Processing Rules",
+  "description": "Configurable stage delay thresholds for operational delay/stuck-order detection.",
+  "type": "object",
+  "required": ["stage_delay_thresholds_seconds"],
+  "properties": {
+    "description": { "type": "string" },
+    "time_unit": { "type": "string", "const": "seconds" },
+    "stage_delay_thresholds_seconds": {
+      "type": "object",
+      "required": [
+        "ORDER_PLACED->ORDER_CONFIRMED",
+        "ORDER_CONFIRMED->ORDER_PACKED",
+        "ORDER_PACKED->ORDER_SHIPPED",
+        "ORDER_SHIPPED->OUT_FOR_DELIVERY",
+        "OUT_FOR_DELIVERY->ORDER_DELIVERED"
+      ],
+      "properties": {
+        "ORDER_PLACED->ORDER_CONFIRMED": { "type": "integer", "minimum": 1 },
+        "ORDER_CONFIRMED->ORDER_PACKED": { "type": "integer", "minimum": 1 },
+        "ORDER_PACKED->ORDER_SHIPPED": { "type": "integer", "minimum": 1 },
+        "ORDER_SHIPPED->OUT_FOR_DELIVERY": { "type": "integer", "minimum": 1 },
+        "OUT_FOR_DELIVERY->ORDER_DELIVERED": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

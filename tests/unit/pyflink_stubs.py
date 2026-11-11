@@ -73,6 +73,10 @@ def install_pyflink_stubs():
             return "boolean"
 
         @staticmethod
+        def LONG():
+            return "long"
+
+        @staticmethod
         def ROW_NAMED(names, types):
             return ("row", tuple(names), tuple(types))
 
@@ -83,6 +87,10 @@ def install_pyflink_stubs():
 
     class OutputTag(Dummy):
         pass
+
+    class TimeDomain:
+        EVENT_TIME = "EVENT_TIME"
+        PROCESSING_TIME = "PROCESSING_TIME"
 
     pyflink = new_module("pyflink")
     common = new_module("pyflink.common")
@@ -117,6 +125,7 @@ def install_pyflink_stubs():
     common_watermark.TimestampAssigner = Dummy
     datastream.StreamExecutionEnvironment = Dummy
     datastream.OutputTag = OutputTag
+    datastream.TimeDomain = TimeDomain
     datastream.connectors = connectors
     datastream.functions = functions
     datastream.state = state
