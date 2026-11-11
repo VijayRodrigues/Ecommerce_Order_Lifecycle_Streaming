@@ -1,13 +1,11 @@
-import importlib.util
 import json
-import sys
-import types
 import unittest
 import uuid
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from pyflink_stubs import load_job_module
 from order_lifecycle.generator.event_generator import (
     WATERMARK_HEARTBEAT,
     WATERMARK_HEARTBEAT_DELAY_SECONDS,
@@ -18,13 +16,6 @@ from order_lifecycle.generator.event_generator import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = PROJECT_ROOT / "schemas" / "order_event.schema.json"
-JOB_PATH = (
-    PROJECT_ROOT
-    / "src"
-    / "order_lifecycle"
-    / "flink"
-    / "order_lifecycle_job.py"
-)
 
 ALLOWED_LATENESS_SECONDS = 300
 
@@ -33,78 +24,6 @@ def parse_timestamp(event):
     return datetime.fromisoformat(
         event["event_timestamp"].replace("Z", "+00:00")
     )
-
-
-def install_pyflink_stubs():
-    if importlib.util.find_spec("pyflink") is not None:
-        return
-
-    def new_module(name):
-        module = types.ModuleType(name)
-        sys.modules[name] = module
-        return module
-
-    class Dummy:
-        def __init__(self, *args, **kwargs):
-            pass
-
-    class Types:
-        @staticmethod
-        def STRING():
-            return "string"
-
-        @staticmethod
-        def BOOLEAN():
-            return "boolean"
-
-    class OutputTag(Dummy):
-        pass
-
-    pyflink = new_module("pyflink")
-    common = new_module("pyflink.common")
-    common_time = new_module("pyflink.common.time")
-    common_serialization = new_module("pyflink.common.serialization")
-    common_watermark = new_module("pyflink.common.watermark_strategy")
-    datastream = new_module("pyflink.datastream")
-    connectors = new_module("pyflink.datastream.connectors")
-    connectors_kafka = new_module("pyflink.datastream.connectors.kafka")
-    functions = new_module("pyflink.datastream.functions")
-    state = new_module("pyflink.datastream.state")
-
-    common.Types = Types
-    common.WatermarkStrategy = Dummy
-    common.time = common_time
-    common.serialization = common_serialization
-    common.watermark_strategy = common_watermark
-    common_time.Duration = Dummy
-    common_serialization.SimpleStringSchema = Dummy
-    common_watermark.TimestampAssigner = Dummy
-    datastream.StreamExecutionEnvironment = Dummy
-    datastream.OutputTag = OutputTag
-    datastream.connectors = connectors
-    datastream.functions = functions
-    datastream.state = state
-    connectors.kafka = connectors_kafka
-    connectors_kafka.KafkaSource = Dummy
-    connectors_kafka.KafkaOffsetsInitializer = Dummy
-    functions.ProcessFunction = Dummy
-    functions.KeyedProcessFunction = Dummy
-    state.ValueStateDescriptor = Dummy
-    state.ListStateDescriptor = Dummy
-
-    pyflink.common = common
-    pyflink.datastream = datastream
-
-
-def load_job_module():
-    install_pyflink_stubs()
-    spec = importlib.util.spec_from_file_location(
-        "order_lifecycle_job_under_test",
-        JOB_PATH,
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 class GeneratorHeartbeatTests(unittest.TestCase):

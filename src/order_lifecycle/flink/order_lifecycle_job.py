@@ -2,16 +2,23 @@
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 
-from pyflink.common import Types, WatermarkStrategy
+from pyflink.common import Row, Types, WatermarkStrategy
 from pyflink.common.time import Duration
-from pyflink.common.serialization import SimpleStringSchema
+from pyflink.common.serialization import (
+    SerializationSchema,
+    SimpleStringSchema,
+)
 from pyflink.common.watermark_strategy import TimestampAssigner
 from pyflink.datastream import StreamExecutionEnvironment, OutputTag
+from pyflink.datastream.connectors.base import DeliveryGuarantee
 from pyflink.datastream.connectors.kafka import (
     KafkaSource,
     KafkaOffsetsInitializer,
+    KafkaSink,
+    KafkaRecordSerializationSchema,
 )
 from pyflink.datastream.functions import (
     ProcessFunction,
@@ -21,11 +28,26 @@ from pyflink.datastream.state import (
     ValueStateDescriptor,
     ListStateDescriptor,
 )
+from pyflink.java_gateway import get_gateway
 
 
 BOOTSTRAP_SERVERS = "kafka_kraft_docker:29092"
 INPUT_TOPIC = "ecommerce.order-lifecycle.events"
 CONSUMER_GROUP = "order-lifecycle-processor"
+STATE_TOPIC = "ecommerce.order-lifecycle.state"
+PROCESSED_TOPIC = "ecommerce.order-lifecycle.processed"
+EXCEPTIONS_TOPIC = "ecommerce.order-lifecycle.exceptions"
+
+SERIALIZER_JAR_PATH = (
+    Path(__file__).resolve().parent
+    / "lib"
+    / "order-lifecycle-serializers.jar"
+)
+
+KAFKA_RECORD_TYPE = Types.ROW_NAMED(
+    ["kafka_key", "payload"],
+    [Types.STRING(), Types.STRING()],
+)
 
 ALLOWED_LATENESS_SECONDS = 300
 
@@ -107,6 +129,11 @@ LIFECYCLE_EXCEPTIONS = OutputTag(
     Types.STRING(),
 )
 
+STATE_UPDATES = OutputTag(
+    "state-updates",
+    Types.STRING(),
+)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -120,6 +147,169 @@ def parse_event_timestamp(timestamp):
 
 def is_business_event(value):
     return json.loads(value)["event_type"] != WATERMARK_HEARTBEAT
+
+
+def utc_now_iso():
+    return (
+        datetime.now(timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def extract_partial_ids(raw_event):
+    try:
+        event = json.loads(raw_event)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+    if not isinstance(event, dict):
+        return {}
+
+    partial_ids = {}
+
+    for field in ("order_id", "event_id"):
+        value = event.get(field)
+
+        if isinstance(value, str) and value.strip():
+            partial_ids[field] = value
+
+    return partial_ids
+
+
+def select_record_key(record):
+    if not isinstance(record, dict):
+        return "unknown"
+
+    for field in ("order_id", "event_id"):
+        value = record.get(field)
+
+        if isinstance(value, str) and value.strip():
+            return value
+
+    return "unknown"
+
+
+def to_kafka_record(value):
+    try:
+        record = json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        record = {}
+
+    return Row(select_record_key(record), value)
+
+
+def build_state_update(event, previous_status, current_status):
+    return {
+        "order_id": event["order_id"],
+        "current_status": current_status,
+        "previous_status": previous_status,
+        "last_event_id": event["event_id"],
+        "last_event_type": event["event_type"],
+        "last_event_timestamp": event["event_timestamp"],
+        "last_source": event["source"],
+        "updated_at": utc_now_iso(),
+    }
+
+
+def build_processed_event(event, previous_status, current_status):
+    return {
+        **event,
+        "processing_status": "ACCEPTED",
+        "previous_status": previous_status,
+        "current_status": current_status,
+        "processed_at": utc_now_iso(),
+    }
+
+
+def build_malformed_exception(raw_event, error):
+    exception = {
+        "exception_type": "MALFORMED_EVENT",
+        "exception_category": "MALFORMED_EVENTS",
+        "error": error,
+        "raw_event": raw_event,
+        "failed_at": utc_now_iso(),
+    }
+
+    exception.update(extract_partial_ids(raw_event))
+    return exception
+
+
+def build_duplicate_exception(event):
+    return {
+        "exception_type": "DUPLICATE_EVENT",
+        "exception_category": "DUPLICATE_EVENTS",
+        "error": "Event with this event_id was already processed",
+        "event_id": event["event_id"],
+        "order_id": event["order_id"],
+        "event_type": event["event_type"],
+        "status": "DUPLICATE",
+        "failed_at": utc_now_iso(),
+    }
+
+
+def build_too_late_exception(event, current_watermark):
+    return {
+        "exception_type": "EVENT_TOO_LATE",
+        "exception_category": "LIFECYCLE_EXCEPTIONS",
+        "error": "Event timestamp is at or before the current watermark",
+        "event": event,
+        "order_id": event["order_id"],
+        "event_id": event["event_id"],
+        "event_type": event["event_type"],
+        "current_watermark": current_watermark,
+        "failed_at": utc_now_iso(),
+    }
+
+
+def build_invalid_transition_exception(
+    event,
+    previous_status,
+    attempted_event,
+):
+    return {
+        "exception_type": "INVALID_LIFECYCLE_TRANSITION",
+        "exception_category": "LIFECYCLE_EXCEPTIONS",
+        "error": (
+            f"Cannot transition from {previous_status} "
+            f"to {attempted_event}"
+        ),
+        "event": event,
+        "order_id": event["order_id"],
+        "event_id": event["event_id"],
+        "event_type": event["event_type"],
+        "previous_status": previous_status,
+        "attempted_event": attempted_event,
+        "failed_at": utc_now_iso(),
+    }
+
+
+def build_row_field_schema(field_index):
+    return SerializationSchema(
+        get_gateway().jvm.orderlifecycle.RowFieldExtractorSchema(
+            field_index
+        )
+    )
+
+
+def build_kafka_sink(topic, key_schema, value_schema):
+    record_serializer = (
+        KafkaRecordSerializationSchema.builder()
+        .set_topic(topic)
+        .set_key_serialization_schema(key_schema)
+        .set_value_serialization_schema(value_schema)
+        .build()
+    )
+
+    return (
+        KafkaSink.builder()
+        .set_bootstrap_servers(BOOTSTRAP_SERVERS)
+        .set_record_serializer(record_serializer)
+        .set_delivery_guarantee(
+            DeliveryGuarantee.AT_LEAST_ONCE
+        )
+        .build()
+    )
 
 
 class EventTimestampAssigner(TimestampAssigner):
@@ -193,10 +383,10 @@ class ValidateEvents(ProcessFunction):
             yield json.dumps(event)
 
         except (json.JSONDecodeError, ValueError, TypeError) as error:
-            malformed = {
-                "raw_event": value,
-                "error": str(error),
-            }
+            malformed = build_malformed_exception(
+                value,
+                str(error),
+            )
 
             yield MALFORMED_EVENTS, json.dumps(malformed)
 
@@ -213,15 +403,9 @@ class DeduplicateEvents(KeyedProcessFunction):
 
     def process_element(self, value, ctx):
         event = json.loads(value)
-        event_id = event["event_id"]
 
         if self.event_seen.value() is not None:
-            duplicate = {
-                "event_id": event_id,
-                "order_id": event["order_id"],
-                "event_type": event["event_type"],
-                "status": "DUPLICATE",
-            }
+            duplicate = build_duplicate_exception(event)
 
             yield DUPLICATE_EVENTS, json.dumps(duplicate)
 
@@ -267,11 +451,10 @@ class ValidateLifecycle(KeyedProcessFunction):
         )
 
         if event_timestamp <= current_watermark:
-            exception = {
-                "event": event,
-                "error": "EVENT_TOO_LATE",
-                "current_watermark": current_watermark,
-            }
+            exception = build_too_late_exception(
+                event,
+                current_watermark,
+            )
 
             yield LIFECYCLE_EXCEPTIONS, json.dumps(exception)
             return
@@ -319,12 +502,11 @@ class ValidateLifecycle(KeyedProcessFunction):
             )
 
             if event_type not in allowed:
-                exception = {
-                    "event": event,
-                    "error": "INVALID_LIFECYCLE_TRANSITION",
-                    "previous_status": previous_status,
-                    "attempted_event": event_type,
-                }
+                exception = build_invalid_transition_exception(
+                    event,
+                    previous_status,
+                    event_type,
+                )
 
                 yield (
                     LIFECYCLE_EXCEPTIONS,
@@ -335,12 +517,19 @@ class ValidateLifecycle(KeyedProcessFunction):
 
             self.current_status.update(event_type)
 
-            result = {
-                **event,
-                "processing_status": "ACCEPTED",
-                "previous_status": previous_status,
-                "current_status": event_type,
-            }
+            state_update = build_state_update(
+                event,
+                previous_status,
+                event_type,
+            )
+
+            yield STATE_UPDATES, json.dumps(state_update)
+
+            result = build_processed_event(
+                event,
+                previous_status,
+                event_type,
+            )
 
             yield json.dumps(result)
 
@@ -349,6 +538,7 @@ def main():
 
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
+    env.add_jars(SERIALIZER_JAR_PATH.as_uri())
 
     kafka_source = (
         KafkaSource.builder()
@@ -428,10 +618,61 @@ def main():
         LIFECYCLE_EXCEPTIONS
     )
 
+    state_updates = lifecycle_results.get_side_output(
+        STATE_UPDATES
+    )
+
     lifecycle_results.print("LIFECYCLE_RESULTS")
+    state_updates.print("ORDER_STATE_UPDATES")
     lifecycle_exceptions.print("LIFECYCLE_EXCEPTIONS")
     malformed_events.print("MALFORMED_EVENTS")
     duplicate_events.print("DUPLICATE_EVENTS")
+
+    key_schema = build_row_field_schema(0)
+    value_schema = build_row_field_schema(1)
+
+    processed_records = lifecycle_results.map(
+        to_kafka_record,
+        output_type=KAFKA_RECORD_TYPE,
+    )
+
+    state_records = state_updates.map(
+        to_kafka_record,
+        output_type=KAFKA_RECORD_TYPE,
+    )
+
+    exception_records = (
+        malformed_events
+        .union(duplicate_events, lifecycle_exceptions)
+        .map(
+            to_kafka_record,
+            output_type=KAFKA_RECORD_TYPE,
+        )
+    )
+
+    processed_records.sink_to(
+        build_kafka_sink(
+            PROCESSED_TOPIC,
+            key_schema,
+            value_schema,
+        )
+    )
+
+    state_records.sink_to(
+        build_kafka_sink(
+            STATE_TOPIC,
+            key_schema,
+            value_schema,
+        )
+    )
+
+    exception_records.sink_to(
+        build_kafka_sink(
+            EXCEPTIONS_TOPIC,
+            key_schema,
+            value_schema,
+        )
+    )
 
     env.execute("Ecommerce Order Lifecycle Processor")
 
