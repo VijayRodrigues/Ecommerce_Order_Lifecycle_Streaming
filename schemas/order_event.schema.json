@@ -35,7 +35,8 @@
         "ORDER_SHIPPED",
         "OUT_FOR_DELIVERY",
         "ORDER_DELIVERED",
-        "ORDER_CANCELLED"
+        "ORDER_CANCELLED",
+        "WATERMARK_HEARTBEAT"
       ]
     },
     "event_timestamp": {
@@ -47,7 +48,8 @@
       "enum": [
         "order_service",
         "warehouse",
-        "delivery_partner"
+        "delivery_partner",
+        "system"
       ]
     }
   }

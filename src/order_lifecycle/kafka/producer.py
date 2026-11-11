@@ -7,7 +7,11 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from kafka import KafkaProducer
-from order_lifecycle.generator.event_generator import LIFECYCLE, generate_scenario
+from order_lifecycle.generator.event_generator import (
+    LIFECYCLE,
+    add_watermark_heartbeat,
+    generate_scenario,
+)
 
 
 BOOTSTRAP_SERVERS = "localhost:9092"
@@ -101,8 +105,16 @@ def main():
             else:
                 events = generate_scenario(args.scenario)
 
+            business_event_count = len(events)
+
+            if args.scenario != "continuous":
+                events = add_watermark_heartbeat(events)
+
             for index, event in enumerate(events):
-                if args.scenario == "late_events" and index == len(events) - 1:
+                if (
+                    args.scenario == "late_events"
+                    and index == business_event_count - 1
+                ):
                     time.sleep(max(args.interval, 1.0))
 
                 publish_event(producer, event)

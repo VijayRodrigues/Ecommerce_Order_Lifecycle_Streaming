@@ -29,6 +29,8 @@ CONSUMER_GROUP = "order-lifecycle-processor"
 
 ALLOWED_LATENESS_SECONDS = 300
 
+WATERMARK_HEARTBEAT = "WATERMARK_HEARTBEAT"
+
 EVENT_TYPES = {
     "ORDER_PLACED",
     "ORDER_CONFIRMED",
@@ -37,12 +39,14 @@ EVENT_TYPES = {
     "OUT_FOR_DELIVERY",
     "ORDER_DELIVERED",
     "ORDER_CANCELLED",
+    "WATERMARK_HEARTBEAT",
 }
 
 SOURCES = {
     "order_service",
     "warehouse",
     "delivery_partner",
+    "system",
 }
 
 REQUIRED_FIELDS = {
@@ -112,6 +116,10 @@ def parse_event_timestamp(timestamp):
         timestamp.replace("Z", "+00:00")
     )
     return int(parsed.timestamp() * 1000)
+
+
+def is_business_event(value):
+    return json.loads(value)["event_type"] != WATERMARK_HEARTBEAT
 
 
 class EventTimestampAssigner(TimestampAssigner):
@@ -401,8 +409,12 @@ def main():
         )
     )
 
+    business_events = event_time_events.filter(
+        is_business_event
+    )
+
     lifecycle_results = (
-        event_time_events
+        business_events
         .key_by(
             lambda value: json.loads(value)["order_id"]
         )

@@ -15,7 +15,8 @@ SOURCES = {
     "ORDER_SHIPPED": "warehouse",
     "OUT_FOR_DELIVERY": "delivery_partner",
     "ORDER_DELIVERED": "delivery_partner",
-    "ORDER_CANCELLED": "order_service"
+    "ORDER_CANCELLED": "order_service",
+    "WATERMARK_HEARTBEAT": "system"
 }
 
 LIFECYCLE = [
@@ -27,6 +28,10 @@ LIFECYCLE = [
     "ORDER_DELIVERED"
 ]
 
+WATERMARK_HEARTBEAT = "WATERMARK_HEARTBEAT"
+
+WATERMARK_HEARTBEAT_DELAY_SECONDS = 301
+
 
 def create_event(order_id, event_type, timestamp):
     return {
@@ -37,6 +42,25 @@ def create_event(order_id, event_type, timestamp):
         "event_timestamp": timestamp.isoformat().replace("+00:00", "Z"),
         "source": SOURCES[event_type]
     }
+
+
+def add_watermark_heartbeat(events):
+    max_timestamp = max(
+        datetime.fromisoformat(
+            event["event_timestamp"].replace("Z", "+00:00")
+        )
+        for event in events
+    )
+
+    heartbeat = create_event(
+        events[0]["order_id"],
+        WATERMARK_HEARTBEAT,
+        max_timestamp + timedelta(
+            seconds=WATERMARK_HEARTBEAT_DELAY_SECONDS
+        )
+    )
+
+    return list(events) + [heartbeat]
 
 
 def generate_scenario(scenario, start_time=None, step=None):
@@ -154,8 +178,16 @@ def main():
         else:
             events = generate_scenario(args.scenario)
 
+        business_event_count = len(events)
+
+        if args.scenario != "continuous":
+            events = add_watermark_heartbeat(events)
+
         for index, event in enumerate(events):
-            if args.scenario == "late_events" and index == len(events) - 1:
+            if (
+                args.scenario == "late_events"
+                and index == business_event_count - 1
+            ):
                 time.sleep(max(args.interval, 1.0))
 
             print(json.dumps(event), flush=True)
