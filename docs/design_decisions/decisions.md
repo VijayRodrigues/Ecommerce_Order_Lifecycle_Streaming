@@ -2,7 +2,7 @@
 
 ## Status
 
-Core lifecycle, heartbeat, Kafka outputs, duration/delay analytics, and local checkpoint recovery are implemented incrementally.
+Core lifecycle, heartbeat, Kafka outputs, duration/delay analytics, local checkpoint recovery, independent consumers, and project documentation are implemented for the local portfolio scope.
 
 ## Decision log
 
@@ -18,6 +18,7 @@ Core lifecycle, heartbeat, Kafka outputs, duration/delay analytics, and local ch
 | D-008 | Bounded fixed-delay restart strategy | Implemented | Automatic worker-failure recovery with a finite retry limit avoids restart loops on persistent faults. |
 | D-009 | Stable managed-state descriptors and timers | Implemented | Stable names and types allow checkpoint/savepoint restoration without skipping state. |
 | D-010 | Keep Kafka sinks at-least-once | Implemented | The existing sinks are not transactional; duplicate outputs after recovery are documented and consumers must deduplicate where needed. |
+| D-011 | Fall back to manual partition assignment when consumer groups are unavailable | Implemented | The shared single-broker Kafka lab cannot create the internal consumer-offset topic with its configured replication factor. The fallback preserves independent read capability without modifying shared infrastructure. |
 
 See `docs/design_decisions/duration_and_delay_detection.md` for clock semantics, defaults, and timer behavior. See `docs/design_decisions/checkpointing_and_recovery.md` for checkpoint settings, savepoint commands, and recovery semantics.
 

@@ -163,8 +163,9 @@ Topic names, message keys, and schemas are unchanged.
 
 ## Validation performed
 
-- Unit suite: `62 tests OK`, including checkpoint settings, storage paths,
-  state backend, restart strategy, and stable state descriptor names.
+- Unit suite: `85 tests OK` at final validation, including checkpoint settings,
+  storage paths, state backend, restart strategy, stable state descriptor
+  names, and consumer coverage.
 - Checkpoints completed on a running job and were written to the shared volume.
 - A TaskManager restart moved the job through `RESTARTING` to `RUNNING` and
   restored checkpoint `chk-2` (`restored=1`) within seconds.
