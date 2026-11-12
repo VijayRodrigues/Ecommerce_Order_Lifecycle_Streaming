@@ -1,9 +1,14 @@
-<#
-.SYNOPSIS
-    Placeholder for project environment setup.
-.DESCRIPTION
-    Intended to prepare the local Python environment and project configuration.
-    TODO: Implement once the architecture and implementation decisions are approved.
-#>
+$ErrorActionPreference = "Stop"
 
-# TODO: Add setup steps.
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$venvPath = Join-Path $repoRoot ".venv"
+$pythonPath = Join-Path $venvPath "Scripts\python.exe"
+
+if (-not (Test-Path -LiteralPath $pythonPath)) {
+    python -m venv $venvPath
+}
+
+& $pythonPath -m pip install --upgrade pip
+& $pythonPath -m pip install -e $repoRoot
+
+Write-Output "Setup complete. Activate with: .\.venv\Scripts\Activate.ps1"

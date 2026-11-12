@@ -1,9 +1,10 @@
-<#
-.SYNOPSIS
-    Placeholder for running the project test suite.
-.DESCRIPTION
-    Intended to execute unit, integration and end-to-end tests.
-    TODO: Implement once the testing strategy and test tooling are approved.
-#>
+$ErrorActionPreference = "Stop"
 
-# TODO: Add test execution steps.
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$pythonPath = Join-Path $repoRoot ".venv\Scripts\python.exe"
+
+if (-not (Test-Path -LiteralPath $pythonPath)) {
+    throw "Virtual environment not found. Run .\scripts\setup.ps1 first."
+}
+
+& $pythonPath -m unittest discover -s (Join-Path $repoRoot "tests\unit") -v

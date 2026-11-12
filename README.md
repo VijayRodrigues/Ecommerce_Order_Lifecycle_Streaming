@@ -249,6 +249,12 @@ Check the REST API at
 
 ### 3. Publish demo scenarios
 
+Finite scenarios use event timestamps relative to the current run. A
+heartbeat from one scenario advances the event-time watermark, so a later
+finite scenario can be classified as too late if it is run against the same
+long-lived job. For a clean scenario-by-scenario demonstration, submit a fresh
+job before each finite scenario. Continuous mode does not have this limitation.
+
 ```powershell
 python -m order_lifecycle.kafka.producer --scenario normal_flow
 python -m order_lifecycle.kafka.producer --scenario duplicate_events
@@ -256,12 +262,6 @@ python -m order_lifecycle.kafka.producer --scenario late_events
 python -m order_lifecycle.kafka.producer --scenario out_of_order_events
 python -m order_lifecycle.kafka.producer --scenario invalid_events
 ```
-
-Finite scenarios use event timestamps relative to the current run. A
-heartbeat from one scenario advances the event-time watermark, so a later
-finite scenario can be classified as too late if it is run against the same
-long-lived job. For a clean scenario-by-scenario demonstration, submit a fresh
-job before each finite scenario. Continuous mode does not have this limitation.
 
 ### 4. Read the outputs
 

@@ -1,9 +1,0 @@
-# application.yaml
-#
-# Purpose: application-level configuration for the E-commerce Order Lifecycle
-# and Event Processing project (runtime settings, feature toggles, logging).
-#
-# TODO: Define configuration keys and values once the architecture and
-# implementation decisions are approved.
-#
-# Intentionally left without configuration values at the scaffolding stage.
