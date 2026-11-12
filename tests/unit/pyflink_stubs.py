@@ -80,6 +80,34 @@ def install_pyflink_stubs():
         def ROW_NAMED(names, types):
             return ("row", tuple(names), tuple(types))
 
+    class Configuration:
+        def __init__(self):
+            self.values = {}
+
+        def set_string(self, key, value):
+            self.values[key] = value
+            return self
+
+        def get_string(self, key, default=None):
+            return self.values.get(key, default)
+
+        def to_dict(self):
+            return dict(self.values)
+
+    class ValueStateDescriptor:
+        def __init__(self, name, type_info):
+            self.name = name
+            self.type_info = type_info
+
+    class ListStateDescriptor:
+        def __init__(self, name, type_info):
+            self.name = name
+            self.type_info = type_info
+
+    class CheckpointingMode:
+        EXACTLY_ONCE = "EXACTLY_ONCE"
+        AT_LEAST_ONCE = "AT_LEAST_ONCE"
+
     class DeliveryGuarantee:
         AT_LEAST_ONCE = "AT_LEAST_ONCE"
         EXACTLY_ONCE = "EXACTLY_ONCE"
@@ -115,6 +143,7 @@ def install_pyflink_stubs():
 
     common.Types = Types
     common.Row = Row
+    common.Configuration = Configuration
     common.WatermarkStrategy = Dummy
     common.time = common_time
     common.serialization = common_serialization
@@ -123,6 +152,7 @@ def install_pyflink_stubs():
     common_serialization.SimpleStringSchema = Dummy
     common_serialization.SerializationSchema = Dummy
     common_watermark.TimestampAssigner = Dummy
+    datastream.CheckpointingMode = CheckpointingMode
     datastream.StreamExecutionEnvironment = Dummy
     datastream.OutputTag = OutputTag
     datastream.TimeDomain = TimeDomain
@@ -138,8 +168,8 @@ def install_pyflink_stubs():
     connectors_kafka.KafkaRecordSerializationSchema = Dummy
     functions.ProcessFunction = Dummy
     functions.KeyedProcessFunction = Dummy
-    state.ValueStateDescriptor = Dummy
-    state.ListStateDescriptor = Dummy
+    state.ValueStateDescriptor = ValueStateDescriptor
+    state.ListStateDescriptor = ListStateDescriptor
     java_gateway.get_gateway = lambda: Dummy()
 
     pyflink.common = common

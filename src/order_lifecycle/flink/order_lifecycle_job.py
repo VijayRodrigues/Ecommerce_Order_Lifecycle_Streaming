@@ -6,7 +6,12 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pyflink.common import Row, Types, WatermarkStrategy
+from pyflink.common import (
+    Configuration,
+    Row,
+    Types,
+    WatermarkStrategy,
+)
 from pyflink.common.time import Duration
 from pyflink.common.serialization import (
     SerializationSchema,
@@ -14,6 +19,7 @@ from pyflink.common.serialization import (
 )
 from pyflink.common.watermark_strategy import TimestampAssigner
 from pyflink.datastream import (
+    CheckpointingMode,
     StreamExecutionEnvironment,
     OutputTag,
     TimeDomain,
@@ -55,6 +61,48 @@ KAFKA_RECORD_TYPE = Types.ROW_NAMED(
 )
 
 ALLOWED_LATENESS_SECONDS = 300
+
+CHECKPOINT_INTERVAL_MS = 60_000
+CHECKPOINT_TIMEOUT_MS = 300_000
+CHECKPOINT_MIN_PAUSE_MS = 10_000
+CHECKPOINT_MAX_CONCURRENT = 1
+CHECKPOINT_TOLERABLE_FAILURES = 3
+
+CHECKPOINT_DIRECTORY = (
+    "file:///opt/flink/usrlib/flink-state/checkpoints"
+)
+SAVEPOINT_DIRECTORY = (
+    "file:///opt/flink/usrlib/flink-state/savepoints"
+)
+
+STATE_BACKEND_TYPE = "hashmap"
+
+RESTART_STRATEGY_TYPE = "fixed-delay"
+RESTART_STRATEGY_ATTEMPTS = 10
+RESTART_STRATEGY_DELAY = "10 s"
+
+EVENT_SEEN_STATE = "event_seen"
+CURRENT_ORDER_STATUS_STATE = "current_order_status"
+PENDING_ORDER_EVENTS_STATE = "pending_order_events"
+LAST_ACCEPTED_EVENT_TIMESTAMP_STATE = (
+    "last_accepted_event_timestamp"
+)
+ORDER_PLACED_TIMESTAMP_STATE = "order_placed_timestamp"
+STAGE_STARTED_PROCESSING_MS_STATE = (
+    "stage_started_processing_ms"
+)
+STAGE_ALERT_DEADLINE_MS_STATE = "stage_alert_deadline_ms"
+STAGE_ALERT_SENT_STATE = "stage_alert_sent"
+
+VALIDATE_LIFECYCLE_STATE_NAMES = {
+    CURRENT_ORDER_STATUS_STATE,
+    PENDING_ORDER_EVENTS_STATE,
+    LAST_ACCEPTED_EVENT_TIMESTAMP_STATE,
+    ORDER_PLACED_TIMESTAMP_STATE,
+    STAGE_STARTED_PROCESSING_MS_STATE,
+    STAGE_ALERT_DEADLINE_MS_STATE,
+    STAGE_ALERT_SENT_STATE,
+}
 
 STAGE_DELAY_CONFIG_ENV = "ORDER_LIFECYCLE_PROCESSING_RULES"
 STAGE_DELAY_CONFIG_FILENAME = "processing_rules.json"
@@ -563,6 +611,69 @@ def build_stage_delay_alert(
     }
 
 
+def build_recovery_configuration():
+    configuration = Configuration()
+
+    configuration.set_string(
+        "state.backend.type",
+        STATE_BACKEND_TYPE,
+    )
+    configuration.set_string(
+        "execution.checkpointing.storage",
+        "filesystem",
+    )
+    configuration.set_string(
+        "execution.checkpointing.dir",
+        CHECKPOINT_DIRECTORY,
+    )
+    configuration.set_string(
+        "execution.checkpointing.savepoint-dir",
+        SAVEPOINT_DIRECTORY,
+    )
+    configuration.set_string(
+        "restart-strategy.type",
+        RESTART_STRATEGY_TYPE,
+    )
+    configuration.set_string(
+        "restart-strategy.fixed-delay.attempts",
+        str(RESTART_STRATEGY_ATTEMPTS),
+    )
+    configuration.set_string(
+        "restart-strategy.fixed-delay.delay",
+        RESTART_STRATEGY_DELAY,
+    )
+
+    return configuration
+
+
+def configure_recovery(env):
+    env.configure(build_recovery_configuration())
+
+    env.enable_checkpointing(
+        CHECKPOINT_INTERVAL_MS,
+        CheckpointingMode.EXACTLY_ONCE,
+    )
+
+    checkpoint_config = env.get_checkpoint_config()
+    checkpoint_config.set_checkpoint_timeout(
+        CHECKPOINT_TIMEOUT_MS
+    )
+    checkpoint_config.set_min_pause_between_checkpoints(
+        CHECKPOINT_MIN_PAUSE_MS
+    )
+    checkpoint_config.set_max_concurrent_checkpoints(
+        CHECKPOINT_MAX_CONCURRENT
+    )
+    checkpoint_config.set_tolerable_checkpoint_failure_number(
+        CHECKPOINT_TOLERABLE_FAILURES
+    )
+    checkpoint_config.set_checkpointing_mode(
+        CheckpointingMode.EXACTLY_ONCE
+    )
+
+    return checkpoint_config
+
+
 def build_row_field_schema(field_index):
     return SerializationSchema(
         get_gateway().jvm.orderlifecycle.RowFieldExtractorSchema(
@@ -674,7 +785,7 @@ class DeduplicateEvents(KeyedProcessFunction):
 
     def open(self, runtime_context):
         descriptor = ValueStateDescriptor(
-            "event_seen",
+            EVENT_SEEN_STATE,
             Types.BOOLEAN(),
         )
 
@@ -708,37 +819,37 @@ class ValidateLifecycle(KeyedProcessFunction):
 
     def open(self, runtime_context):
         status_descriptor = ValueStateDescriptor(
-            "current_order_status",
+            CURRENT_ORDER_STATUS_STATE,
             Types.STRING(),
         )
 
         pending_descriptor = ListStateDescriptor(
-            "pending_order_events",
+            PENDING_ORDER_EVENTS_STATE,
             Types.STRING(),
         )
 
         last_event_descriptor = ValueStateDescriptor(
-            "last_accepted_event_timestamp",
+            LAST_ACCEPTED_EVENT_TIMESTAMP_STATE,
             Types.STRING(),
         )
 
         placed_descriptor = ValueStateDescriptor(
-            "order_placed_timestamp",
+            ORDER_PLACED_TIMESTAMP_STATE,
             Types.STRING(),
         )
 
         stage_started_descriptor = ValueStateDescriptor(
-            "stage_started_processing_ms",
+            STAGE_STARTED_PROCESSING_MS_STATE,
             Types.LONG(),
         )
 
         alert_deadline_descriptor = ValueStateDescriptor(
-            "stage_alert_deadline_ms",
+            STAGE_ALERT_DEADLINE_MS_STATE,
             Types.LONG(),
         )
 
         alert_sent_descriptor = ValueStateDescriptor(
-            "stage_alert_sent",
+            STAGE_ALERT_SENT_STATE,
             Types.BOOLEAN(),
         )
 
@@ -1060,6 +1171,7 @@ def main():
 
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
+    configure_recovery(env)
     env.add_jars(SERIALIZER_JAR_PATH.as_uri())
 
     kafka_source = (
