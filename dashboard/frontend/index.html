@@ -19,7 +19,7 @@
       </div>
 
       <nav class="main-nav" id="mainNav" aria-label="Dashboard sections">
-        <button class="nav-item active" data-page="overview">
+        <button class="nav-item" data-page="overview">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/></svg>
           <span>Overview</span>
         </button>
@@ -88,7 +88,61 @@
       </header>
 
       <div class="content">
-        <section class="page active" data-page-section="overview">
+        <section class="page active startup-page" data-page-section="startup" id="startupPage">
+          <div class="panel startup-hero">
+            <div class="startup-header">
+              <div>
+                <span class="eyebrow">ONE-CLICK LAUNCH</span>
+                <h2>Welcome to E-commerce Streaming Demo</h2>
+                <p class="panel-subtext">Start the existing streaming environment and watch an order travel through the complete real-time processing pipeline.</p>
+              </div>
+              <div class="startup-actions">
+                <button class="btn primary startup-primary" id="startDemoBtn">START DEMO ENVIRONMENT</button>
+                <button class="btn" id="refreshStartupBtn">Refresh Status</button>
+                <button class="btn danger-outline" id="stopDemoBtn" title="Safely stops the project Flink job and only the project Kafka/Flink containers. No volumes or checkpoints are deleted.">Stop Demo Environment</button>
+              </div>
+            </div>
+            <div class="startup-ready-banner" id="startupReadyBanner" aria-live="polite"></div>
+            <div class="startup-grid">
+              <div class="panel startup-card">
+                <div class="panel-heading compact"><div><span class="eyebrow">ENVIRONMENT CHECKS</span><h2>Component readiness</h2></div></div>
+                <div class="startup-checks" id="startupChecks">
+                  <div class="startup-check" data-check="docker"><span>Docker Engine</span><strong class="check-state" data-check-state="docker">Not Started</strong></div>
+                  <div class="startup-check" data-check="kafka"><span>Kafka</span><strong class="check-state" data-check-state="kafka">Not Started</strong></div>
+                  <div class="startup-check" data-check="jobmanager"><span>Flink JobManager</span><strong class="check-state" data-check-state="jobmanager">Not Started</strong></div>
+                  <div class="startup-check" data-check="taskmanager"><span>Flink TaskManager</span><strong class="check-state" data-check-state="taskmanager">Not Started</strong></div>
+                  <div class="startup-check" data-check="input_topic"><span>Kafka input topic</span><strong class="check-state" data-check-state="input_topic">Not Started</strong></div>
+                  <div class="startup-check" data-check="output_topics"><span>Three Kafka output topics</span><strong class="check-state" data-check-state="output_topics">Not Started</strong></div>
+                  <div class="startup-check" data-check="flink_job"><span>Flink streaming job</span><strong class="check-state" data-check-state="flink_job">Not Started</strong></div>
+                  <div class="startup-check" data-check="dashboard_consumers"><span>Dashboard Kafka monitors</span><strong class="check-state" data-check-state="dashboard_consumers">Not Started</strong></div>
+                </div>
+                <p class="panel-footnote">Status reflects actual Docker, Kafka, Flink REST and dashboard monitor checks. Refreshing status does not change infrastructure.</p>
+              </div>
+              <div class="panel startup-card">
+                <div class="panel-heading compact"><div><span class="eyebrow">STARTUP PROGRESS</span><h2>Live startup steps</h2></div></div>
+                <ol class="startup-steps" id="startupSteps">
+                  <li data-step="docker"><span class="step-dot"></span><div><strong>1. Checking Docker</strong><p>Verifying Docker Engine is available.</p></div><em>Pending</em></li>
+                  <li data-step="kafka_start"><span class="step-dot"></span><div><strong>2. Starting Kafka</strong><p>Starting existing Kafka infrastructure if needed.</p></div><em>Pending</em></li>
+                  <li data-step="kafka_ready"><span class="step-dot"></span><div><strong>3. Waiting for Kafka</strong><p>Checking broker readiness and connectivity.</p></div><em>Pending</em></li>
+                  <li data-step="topics"><span class="step-dot"></span><div><strong>4. Verifying topics</strong><p>Confirming input and three output topics are available.</p></div><em>Pending</em></li>
+                  <li data-step="flink_start"><span class="step-dot"></span><div><strong>5. Starting Flink</strong><p>Starting existing Flink JobManager/TaskManager if needed.</p></div><em>Pending</em></li>
+                  <li data-step="taskmanager"><span class="step-dot"></span><div><strong>6. Checking TaskManager</strong><p>Waiting for Flink REST and TaskManager registration.</p></div><em>Pending</em></li>
+                  <li data-step="job"><span class="step-dot"></span><div><strong>7. Checking Flink job</strong><p>Reusing running job or submitting the existing project job.</p></div><em>Pending</em></li>
+                  <li data-step="consumers"><span class="step-dot"></span><div><strong>8. Connecting dashboard consumers</strong><p>Starting dashboard Kafka monitors for state, processed and exceptions topics.</p></div><em>Pending</em></li>
+                  <li data-step="verify"><span class="step-dot"></span><div><strong>9. Verifying live monitoring</strong><p>Confirming the pipeline is ready for live demonstration.</p></div><em>Pending</em></li>
+                </ol>
+                <div class="startup-message" id="startupMessage">Click "Start Demo Environment" to prepare the existing Docker, Kafka, Flink and dashboard monitors.</div>
+                <div class="startup-error" id="startupError" hidden></div>
+              </div>
+            </div>
+            <div class="callout startup-note">
+              <strong>Safe startup and shutdown</strong>
+              <p>Startup reuses running services and running Flink jobs when possible. Stopping the demo environment stops only the project Flink job and project Kafka/Flink containers; it does not remove Docker volumes, checkpoints or savepoints, and does not stop unrelated containers. Infrastructure is not stopped automatically when the browser closes.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" data-page-section="overview">
           <div class="kpi-grid">
             <article class="kpi-card">
               <div class="kpi-head"><span>Total Events</span><span class="tip" title="Accepted processed events plus exception records observed by this dashboard. Counts start when the dashboard starts and may include retained Kafka history.">?</span></div>

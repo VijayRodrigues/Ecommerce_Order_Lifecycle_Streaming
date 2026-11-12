@@ -13,6 +13,7 @@ from .services.generator_service import GeneratorService
 from .services.infrastructure import InfrastructureStatus
 from .services.kafka_monitor import KafkaMonitor
 from .services.kafka_status import KafkaStatusService
+from .services.startup_service import StartupService
 from .websocket.hub import LiveHub
 
 
@@ -25,7 +26,9 @@ class AppServices:
     docker: DockerService
     flink: FlinkService
     generator: GeneratorService
+    kafka: KafkaStatusService
     infrastructure: InfrastructureStatus
+    startup: StartupService
     start_background: bool = True
 
     def health(self):
@@ -55,6 +58,16 @@ def create_services(settings=None, start_background=True):
     kafka = KafkaStatusService(settings)
     generator = GeneratorService(settings, activity)
     infrastructure = InfrastructureStatus(docker, flink, kafka, monitor)
+    startup = StartupService(
+        settings=settings,
+        activity=activity,
+        hub=hub,
+        docker=docker,
+        flink=flink,
+        kafka=kafka,
+        monitor=monitor,
+        infrastructure=infrastructure,
+    )
 
     activity.subscribe(
         lambda entry: hub.publish_threadsafe(
@@ -70,7 +83,9 @@ def create_services(settings=None, start_background=True):
         docker=docker,
         flink=flink,
         generator=generator,
+        kafka=kafka,
         infrastructure=infrastructure,
+        startup=startup,
         start_background=start_background,
         started_monotonic=time.monotonic(),
     )

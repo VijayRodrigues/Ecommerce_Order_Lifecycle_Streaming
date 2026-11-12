@@ -2,6 +2,42 @@
 
 A local web control centre for the `Ecommerce_Order_Lifecycle_Streaming` pipeline. It uses the existing Kafka topics, PyFlink job, generator, DockerLab infrastructure, and Flink REST API. No React build, database, Redis, cloud service, or extra Kafka/Flink cluster is required.
 
+## One-click demo launcher (primary)
+
+- **Launcher:** `START_DEMO.bat` (project root)
+- Double-clicking it:
+  1. Locates the repository root and uses `.venv\Scripts\python.exe`
+  2. Avoids starting a duplicate backend if `/api/health` is already healthy on the configured port (opens browser instead)
+  3. Starts the FastAPI dashboard backend (`dashboard.backend.app.main:app`)
+  4. Waits until `/api/health` responds
+  5. Opens the browser automatically at `http://127.0.0.1:8090` (or configured host/port)
+  6. Keeps the console open for backend logs; shows clear errors on failure
+- The launcher **only** starts the dashboard application. It does **not** start/stop/recreate Docker containers and does **not** delete persistent data.
+- Infrastructure startup is controlled from the dashboard via **Start Demo Environment**.
+- `run_dashboard.bat` is retained for direct/manual dashboard startup workflows.
+
+## Start Demo Environment (in-dashboard orchestration)
+
+On first load, if the environment is not ready, the dashboard shows a startup landing panel with component checks and a **START DEMO ENVIRONMENT** button.
+
+**Component checks (actual state):** Docker Engine, Kafka, Flink JobManager, Flink TaskManager, Kafka input topic, three Kafka output topics, Flink streaming job, dashboard Kafka monitors. States: `Not Started`, `Starting`, `Connected`, `Running`, `Failed`, `Needs Attention`. **Refresh Status** is non-destructive.
+
+**Startup sequence (sequential, idempotent):**
+1. Check Docker Engine availability
+2. Start existing Kafka service from `F:\DockerLab` only if not running (`docker compose -f ... up -d`)
+3. Wait for Kafka readiness/broker reachability
+4. Verify required Kafka topics exist (input + state/processed/exceptions)
+5. Start existing Flink services from `F:\DockerLab` only if not running
+6. Wait for Flink JobManager readiness and TaskManager registration
+7. Reuse running project Flink job if present; otherwise submit existing job via existing mechanism
+8. Wait for job to reach `RUNNING`
+9. Start/connect dashboard Kafka monitors (idempotent; no duplicate threads)
+10. Verify live monitoring/pipeline checks → **DEMO ENVIRONMENT READY**
+
+Progress steps and plain-English messages update in real time (WebSocket + polling). Duplicate startup requests are rejected safely while in progress. On failure, the failed step and reason are shown; **Retry Startup** runs the sequence again. Partially running services/jobs are reused when possible.
+
+**Safe shutdown:** **Stop Demo Environment** (with confirmation) stops the project Flink job and stops only project containers `kafka_kraft_docker`, `flink-taskmanager`, `flink-jobmanager`. No `docker compose down`, no volume/checkpoint/savepoint deletion, no unrelated containers. Infrastructure is not stopped automatically when the browser closes.
+
 ## Architecture
 
 - **Backend:** FastAPI + Uvicorn (`dashboard/backend/app/main.py`)
@@ -10,7 +46,8 @@ A local web control centre for the `Ecommerce_Order_Lifecycle_Streaming` pipelin
   - `dashboard-order-state-monitor` → `ecommerce.order-lifecycle.state`
   - `dashboard-processed-events-monitor` → `ecommerce.order-lifecycle.processed`
   - `dashboard-exceptions-monitor` → `ecommerce.order-lifecycle.exceptions`
-- **Monitoring/control path:** Docker CLI via allowlisted subprocess calls, Flink REST API, managed generator subprocesses, WebSocket broadcasts.
+- **Startup orchestration:** `startup_service.py` performs non-destructive checks and sequential one-click startup with idempotent reuse, progress/check broadcasting over WebSocket, and safe stop API.
+- **Monitoring/control path:** Docker CLI via allowlisted subprocess calls, Flink REST API, managed generator subprocesses, startup orchestration service, WebSocket broadcasts.
 - **State model:** bounded in-memory stores only. State topic is treated as compacted latest-known state; processed events provide lifecycle history; no full historical reconstruction is claimed beyond observed/retained records.
 
 ## Prerequisites
@@ -37,15 +74,14 @@ Or manually:
 
 ## Start / Stop
 
-Start:
+**Primary:** double-click `START_DEMO.bat` (starts backend, waits for health, opens browser at `http://127.0.0.1:8090`). Then click **Start Demo Environment** in the UI to prepare Docker/Kafka/Flink/job/monitors.
 
+**Manual backend only (retained):**
 ```bat
 run_dashboard.bat
 ```
 
-Open: [http://127.0.0.1:8090](http://127.0.0.1:8090)
-
-Stop: press `Ctrl+C` in the dashboard terminal.
+**Stop:** press `Ctrl+C` in the launcher/dashboard terminal to stop the backend. To stop the demo environment safely, use **Stop Demo Environment** in the dashboard (stops project Flink job and only project Kafka/Flink containers; no volumes/checkpoints deleted). Infrastructure is not stopped automatically when the browser closes.
 
 ## Configuration
 

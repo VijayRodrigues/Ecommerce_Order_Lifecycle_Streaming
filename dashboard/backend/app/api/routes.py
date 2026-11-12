@@ -56,6 +56,52 @@ def infrastructure_status(
     return _services(request).infrastructure.combined(force=refresh)
 
 
+@router.get("/startup/status")
+def startup_status(request: Request):
+    return _services(request).startup.status()
+
+
+@router.post("/startup/start")
+def startup_start(
+    request: Request,
+    retry: bool = Query(default=False),
+):
+    return _operation(_services(request).startup.start(retry=retry))
+
+
+@router.post("/startup/refresh")
+def startup_refresh(request: Request):
+    return _services(request).startup.refresh_checks()
+
+
+@router.post("/startup/stop")
+def startup_stop(request: Request):
+    """Safely stop project demo components without deleting persistent data.
+
+    Stops the project Flink job (if running) and stops only the project
+    Kafka/Flink containers. Does not remove volumes, checkpoints, or savepoints.
+    """
+    services = _services(request)
+    flink_result = services.flink.stop_job()
+    docker_result = services.docker.stop_infrastructure()
+    services.startup.refresh_checks()
+    ok = bool(flink_result.get("ok")) and bool(docker_result.get("ok"))
+    return {
+        "ok": ok,
+        "status": "stopped" if ok else "stop_failed",
+        "message": (
+            "Project Flink job and demo infrastructure stopped safely."
+            if ok
+            else "One or more stop operations failed."
+        ),
+        "detail": {
+            "flink": flink_result,
+            "docker": docker_result,
+            "startup": services.startup.status(),
+        },
+    }
+
+
 @router.post("/infrastructure/start")
 def infrastructure_start(request: Request):
     return _operation(_services(request).docker.start_infrastructure())

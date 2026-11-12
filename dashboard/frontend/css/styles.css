@@ -2213,3 +2213,65 @@ body[data-mode="demo"] .output-list code {
     padding-left: 0;
   }
 }
+
+:root {
+  color-scheme: dark;
+  --bg: #07101f;
+  --bg-soft: #0a1528;
+  --panel: rgba(12, 26, 47, 0.86);
+  --panel-strong: #0d1d34;
+  --panel-raised: #112440;
+  --border: rgba(125, 162, 210, 0.16);
+  --border-strong: rgba(125, 180, 240, 0.28);
+  --text: #e8f1ff;
+  --muted: #8da3c0;
+  --muted-2: #647b99;
+  --blue: #4da2ff;
+  --cyan: #2ed6d1;
+  --green: #35d39a;
+  --yellow: #f4c95d;
+  --red: #ff6b7d;
+  --purple: #a78bfa;
+  --shadow: 0 22px 60px rgba(0, 0, 0, 0.28);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --mono: "Cascadia Code", "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+/* Startup landing */
+.startup-page.active { display: block; }
+.startup-hero { padding: 20px; }
+.startup-header { display:flex; gap:20px; align-items:flex-start; justify-content:space-between; margin-bottom:16px; }
+.startup-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+.startup-primary { min-width: 240px; font-size: 13px; letter-spacing: .02em; }
+.startup-ready-banner { margin-bottom: 14px; padding: 12px 14px; border:1px solid rgba(53,211,154,.35); border-radius: 10px; background: rgba(53,211,154,.08); color:#bff3de; display:none; }
+.startup-ready-banner.show { display:block; }
+.startup-ready-banner strong { color:#7ff0bf; }
+.startup-grid { display:grid; grid-template-columns: minmax(320px,.95fr) minmax(420px,1.25fr); gap:14px; }
+.startup-card { background: rgba(7,18,35,.45); }
+.startup-checks { display:flex; flex-direction:column; }
+.startup-check { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid rgba(125,162,210,.08); }
+.startup-check:last-child { border-bottom:0; }
+.startup-check span { color: var(--muted); font-size: 12px; }
+.check-state { font-size: 11px; font-weight:700; padding:4px 9px; border-radius:999px; border:1px solid var(--border); background: rgba(9,23,43,.6); color:#a7bdd7; }
+.check-state.state-not-started { color:#93a8c2; }
+.check-state.state-starting { color:#d9ecff; border-color: rgba(77,162,255,.35); background: rgba(36,93,168,.2); }
+.check-state.state-connected, .check-state.state-running { color:#9ff0cb; border-color: rgba(53,211,154,.35); background: rgba(25,109,79,.2); }
+.check-state.state-failed { color:#ffb7c1; border-color: rgba(255,107,125,.35); background: rgba(118,34,48,.22); }
+.check-state.state-needs-attention { color:#ffe3a3; border-color: rgba(244,201,93,.35); background: rgba(120,90,20,.2); }
+.startup-steps { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; counter-reset: sstep; }
+.startup-steps li { display:grid; grid-template-columns: 14px minmax(0,1fr) auto; gap:10px; align-items:start; padding:10px 10px; border:1px solid rgba(125,162,210,.1); border-radius:10px; background: rgba(4,14,28,.28); }
+.step-dot { width:10px; height:10px; margin-top:5px; border-radius:50%; background:#4e6785; box-shadow:0 0 0 3px rgba(78,103,133,.15); }
+.startup-steps li.running .step-dot { background: var(--blue); box-shadow:0 0 0 3px rgba(77,162,255,.15), 0 0 12px rgba(77,162,255,.4); }
+.startup-steps li.completed .step-dot { background: var(--green); box-shadow:0 0 0 3px rgba(53,211,154,.14); }
+.startup-steps li.failed .step-dot { background: var(--red); box-shadow:0 0 0 3px rgba(255,107,125,.14); }
+.startup-steps li strong { display:block; font-size:12px; color:#dcecff; margin-bottom:2px; }
+.startup-steps li p { color: var(--muted-2); font-size:10px; line-height:1.45; }
+.startup-steps li em { font-style:normal; font-size:9px; font-weight:700; color:#8ea9c6; white-space:nowrap; padding-top:2px; }
+.startup-steps li.running em { color:#8fd0ff; }
+.startup-steps li.completed em { color:#7fe7b8; }
+.startup-steps li.failed em { color:#ffadb7; }
+.startup-message { margin-top:12px; padding:10px 12px; border:1px solid rgba(77,162,255,.18); border-radius:9px; background: rgba(25,72,128,.12); color:#b9d5f2; font-size:11px; line-height:1.5; }
+.startup-error { margin-top:10px; padding:10px 12px; border:1px solid rgba(255,107,125,.28); border-radius:9px; background: rgba(108,29,42,.18); color:#ffc2ca; font-size:10.5px; line-height:1.5; white-space:pre-wrap; }
+.startup-note { margin-top:14px; }
+@media (max-width: 1200px) { .startup-grid { grid-template-columns: 1fr; } .startup-header { flex-direction:column; } .startup-actions { justify-content:flex-start; } }

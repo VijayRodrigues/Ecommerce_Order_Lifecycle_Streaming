@@ -45,11 +45,18 @@ def create_app(services=None, frontend_dir=None):
         await services.hub.start()
         metrics_task = None
         if services.start_background:
+            # Kafka monitors are started by one-click demo startup or on-demand;
+            # starting here is safe/idempotent and preserves existing behavior.
             services.monitor.start()
             metrics_task = asyncio.create_task(
                 _metrics_loop(services),
                 name="dashboard-metrics",
             )
+            # Publish initial non-destructive readiness status for landing UI.
+            try:
+                services.startup.refresh_checks()
+            except Exception:
+                logger.exception("Initial startup status refresh failed")
         services.activity.add(
             "INFO",
             "dashboard",
