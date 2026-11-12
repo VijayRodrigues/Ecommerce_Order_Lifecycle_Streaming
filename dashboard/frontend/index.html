@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E-commerce Order Lifecycle Streaming – Live Demo</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body data-mode="demo">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">OL</div>
+        <div>
+          <strong>ORDER OPS</strong>
+          <span>Streaming control centre</span>
+        </div>
+      </div>
+
+      <nav class="main-nav" id="mainNav" aria-label="Dashboard sections">
+        <button class="nav-item active" data-page="overview">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/></svg>
+          <span>Overview</span>
+        </button>
+        <button class="nav-item" data-page="events">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v3H4V5Zm0 5.5h16v3H4v-3ZM4 16h10v3H4v-3Z"/></svg>
+          <span>Live Events</span>
+        </button>
+        <button class="nav-item" data-page="orders">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10l3 4v12H4V8l3-4Zm1.4 3h7.2l-1.5-2H9.9L8.4 7ZM7 11v2h10v-2H7Zm0 4v2h7v-2H7Z"/></svg>
+          <span>Order States</span>
+        </button>
+        <button class="nav-item" data-page="exceptions">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 21h20L12 3Zm0 5.5 5.7 10.3H6.3L12 8.5Zm-1 2.8v4h2v-4h-2Zm0 5.2v2h2v-2h-2Z"/></svg>
+          <span>Exceptions &amp; Alerts</span>
+        </button>
+        <button class="nav-item" data-page="flink">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+          <span>Flink &amp; Checkpoints</span>
+        </button>
+        <button class="nav-item" data-page="infrastructure">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v6H4V4Zm0 10h16v6H4v-6Zm3-7h2V6H7v1Zm0 10h2v-1H7v1Z"/></svg>
+          <span>Infrastructure</span>
+        </button>
+        <button class="nav-item" data-page="architecture">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h6v5H5V3Zm8 0h6v5h-6V3ZM5 16h6v5H5v-5Zm8 0h6v5h-6v-5ZM8 8v3h8V8h-2v1h-4V8H8Zm-1 5h10v3h-2v-2h-6v2H7v-3Z"/></svg>
+          <span>Architecture</span>
+        </button>
+        <button class="nav-item" data-page="guide">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h11l3 3v15H5V3Zm3 4v2h7V7H8Zm0 4v2h8v-2H8Zm0 4v2h6v-2H8Z"/></svg>
+          <span>Demo Guide</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="mode-switch" aria-label="Display mode">
+          <button class="mode-btn active" data-mode-btn="demo">Demo Mode</button>
+          <button class="mode-btn" data-mode-btn="technical">Technical Mode</button>
+        </div>
+        <p class="sidebar-note">
+          <span class="tip" title="This dashboard reads real Kafka output topics and the Flink REST API. It keeps only a bounded in-memory history.">?</span>
+          Live data, bounded memory history
+        </p>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1>E-commerce Order Lifecycle Streaming – Live Demo</h1>
+          <p>Real-time order processing with Kafka, Flink and fault-tolerant streaming.</p>
+        </div>
+        <div class="topbar-status">
+          <div class="status-chip neutral" id="pipelineChip">
+            <span class="status-dot"></span>
+            <span id="pipelineText">Checking pipeline</span>
+          </div>
+          <div class="topbar-meta">
+            <span>Last update</span>
+            <strong id="lastUpdate">--</strong>
+          </div>
+          <div class="status-chip neutral" id="connectionChip">
+            <span class="status-dot"></span>
+            <span id="connectionText">Connecting</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="page active" data-page-section="overview">
+          <div class="kpi-grid">
+            <article class="kpi-card">
+              <div class="kpi-head"><span>Total Events</span><span class="tip" title="Accepted processed events plus exception records observed by this dashboard. Counts start when the dashboard starts and may include retained Kafka history.">?</span></div>
+              <strong id="kpiTotal">N/A</strong>
+              <small>Observed this session</small>
+            </article>
+            <article class="kpi-card accent-green">
+              <div class="kpi-head"><span>Successfully Processed</span><span class="tip" title="Accepted lifecycle events read from the processed-events topic.">?</span></div>
+              <strong id="kpiProcessed">N/A</strong>
+              <small>Accepted event records</small>
+            </article>
+            <article class="kpi-card accent-cyan">
+              <div class="kpi-head"><span>Active Orders</span><span class="tip" title="Latest known orders that are not delivered or cancelled. Based on the compacted state topic.">?</span></div>
+              <strong id="kpiActive">N/A</strong>
+              <small>Latest retained states</small>
+            </article>
+            <article class="kpi-card accent-red">
+              <div class="kpi-head"><span>Exceptions</span><span class="tip" title="Malformed, duplicate, late, invalid-transition, and delay-alert records.">?</span></div>
+              <strong id="kpiExceptions">N/A</strong>
+              <small>Exception records</small>
+            </article>
+            <article class="kpi-card accent-yellow">
+              <div class="kpi-head"><span>Delay Alerts</span><span class="tip" title="Orders that exceeded a configured processing-time stage threshold.">?</span></div>
+              <strong id="kpiAlerts">N/A</strong>
+              <small>Operational alerts</small>
+            </article>
+          </div>
+
+          <section class="panel architecture-panel">
+            <div class="panel-heading">
+              <div>
+                <span class="eyebrow">END-TO-END PIPELINE</span>
+                <h2>From order event to visible result</h2>
+              </div>
+              <div class="legend">
+                <span><i class="legend-dot healthy"></i> Healthy</span>
+                <span><i class="legend-dot warning"></i> Attention</span>
+                <span><i class="legend-dot offline"></i> Unavailable</span>
+              </div>
+            </div>
+
+            <div class="flow-grid">
+              <div class="flow-step">
+                <span class="step-label">STEP 1 · GENERATE</span>
+                <div class="flow-card" data-component="generator">
+                  <div class="flow-card-top"><span class="flow-icon">GEN</span><span class="health-dot" data-health="generator"></span></div>
+                  <h3>Event Generator</h3>
+                  <p>Creates order placed, confirmed, packed, shipped, out-for-delivery and delivered events.</p>
+                  <span class="flow-meta" id="generatorFlowStatus">Not running</span>
+                </div>
+              </div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step">
+                <span class="step-label">STEP 2 · SEND</span>
+                <div class="flow-card" data-component="kafka">
+                  <div class="flow-card-top"><span class="flow-icon cyan">KFK</span><span class="health-dot" data-health="kafka"></span></div>
+                  <h3>Kafka Input Topic</h3>
+                  <p>Receives and distributes incoming order events.</p>
+                  <code>ecommerce.order-lifecycle.events</code>
+                  <span class="flow-meta" id="kafkaFlowStatus">Checking broker</span>
+                </div>
+              </div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step flink-step">
+                <span class="step-label">STEP 3 · PROCESS</span>
+                <div class="flow-card flink-card" data-component="flink">
+                  <div class="flow-card-top"><span class="flow-icon purple">FLK</span><span class="health-dot" data-health="flink"></span></div>
+                  <h3>Apache Flink Streaming Job</h3>
+                  <div class="stage-chips">
+                    <span>Validate Events</span>
+                    <span>Deduplicate Events</span>
+                    <span>Event-Time Ordering</span>
+                    <span>Maintain Lifecycle State</span>
+                    <span>Stage &amp; Delivery Duration</span>
+                    <span>Detect Delayed Orders</span>
+                    <span>Handle Late Events</span>
+                  </div>
+                  <span class="flow-meta" id="flinkFlowStatus">Checking Flink</span>
+                </div>
+              </div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step">
+                <span class="step-label">STEP 4 · PUBLISH</span>
+                <div class="flow-card" data-component="topics">
+                  <div class="flow-card-top"><span class="flow-icon blue">OUT</span><span class="health-dot" data-health="topics"></span></div>
+                  <h3>Three result topics</h3>
+                  <div class="output-list">
+                    <div><strong>Order State</strong><code>...lifecycle.state</code></div>
+                    <div><strong>Processed Events</strong><code>...lifecycle.processed</code></div>
+                    <div><strong>Exceptions</strong><code>...lifecycle.exceptions</code></div>
+                  </div>
+                </div>
+              </div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step">
+                <span class="step-label">STEP 5 · CONSUME</span>
+                <div class="flow-card" data-component="consumers">
+                  <div class="flow-card-top"><span class="flow-icon cyan">CON</span><span class="health-dot" data-health="consumers"></span></div>
+                  <h3>Independent consumers</h3>
+                  <div class="output-list">
+                    <div><strong>Order State Consumer</strong><span class="mini-status" data-consumer="state">Waiting</span></div>
+                    <div><strong>Processed Events Consumer</strong><span class="mini-status" data-consumer="processed">Waiting</span></div>
+                    <div><strong>Exceptions Consumer</strong><span class="mini-status" data-consumer="exceptions">Waiting</span></div>
+                  </div>
+                  <p class="small-copy">Each consumer independently reads its own output topic.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="overview-lower">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="eyebrow">ORDER JOURNEY</span>
+                  <h2>Live lifecycle explorer</h2>
+                </div>
+                <div class="inline-controls">
+                  <select id="overviewOrderSelect" aria-label="Choose an order"></select>
+                  <button class="btn small" id="overviewOrderLoad">View</button>
+                </div>
+              </div>
+              <div id="overviewSummary" class="order-summary empty">Choose an order to inspect its retained journey.</div>
+              <div id="overviewTimeline" class="timeline empty-timeline">No order selected.</div>
+            </section>
+
+            <div class="side-stack">
+              <section class="panel generator-panel">
+                <div class="panel-heading compact">
+                  <div>
+                    <span class="eyebrow">CONTROLS</span>
+                    <h2>Event generator</h2>
+                  </div>
+                  <span class="status-chip neutral small" id="generatorStatusChip"><span class="status-dot"></span><span id="generatorStateText">Idle</span></span>
+                </div>
+                <label class="field-label" for="generatorScenario">Scenario</label>
+                <select id="generatorScenario">
+                  <option value="normal_flow">Normal Flow</option>
+                  <option value="duplicate_events">Duplicate Events</option>
+                  <option value="late_events">Late Events</option>
+                  <option value="out_of_order_events">Out-of-Order Events</option>
+                  <option value="invalid_events">Invalid Events</option>
+                  <option value="continuous">Continuous</option>
+                </select>
+                <p class="scenario-help" id="generatorScenarioHelp">Simulates a customer order progressing through the normal delivery journey.</p>
+                <div class="field-row">
+                  <label class="field-label" for="generatorInterval">Continuous interval (s)</label>
+                  <input id="generatorInterval" type="number" min="0.5" max="60" step="0.5" value="2">
+                </div>
+                <div class="button-row">
+                  <button class="btn primary" id="generatorRunBtn">Generate Once</button>
+                  <button class="btn" id="generatorStartBtn">Start Continuous</button>
+                  <button class="btn danger-outline" id="generatorStopBtn">Stop</button>
+                </div>
+                <div class="mini-grid">
+                  <div><span>Last run</span><strong id="generatorLastRun">--</strong></div>
+                  <div><span>Events</span><strong id="generatorEvents">0</strong></div>
+                  <div><span>Errors</span><strong id="generatorErrors">0</strong></div>
+                </div>
+                <div class="mini-log" id="generatorLogs">Generator output will appear here.</div>
+              </section>
+
+              <section class="panel mini-status-panel">
+                <div class="panel-heading compact"><div><span class="eyebrow">AT A GLANCE</span><h2>System health</h2></div></div>
+                <div class="health-list" id="healthList">
+                  <div><span>Kafka broker</span><strong class="status-text neutral" data-health-text="kafka">Checking</strong></div>
+                  <div><span>Flink job</span><strong class="status-text neutral" data-health-text="flink">Checking</strong></div>
+                  <div><span>Dashboard consumers</span><strong class="status-text neutral" data-health-text="consumers">Checking</strong></div>
+                  <div><span>Last checkpoint</span><strong id="overviewCheckpoint">--</strong></div>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <section class="panel tables-panel">
+            <div class="panel-heading">
+              <div><span class="eyebrow">LIVE RECORDS</span><h2>Recent pipeline output</h2></div>
+              <div class="tabs" data-tabs="overview">
+                <button class="tab active" data-tab="processed">Processed Events</button>
+                <button class="tab" data-tab="states">Order States</button>
+                <button class="tab" data-tab="exceptions">Exceptions &amp; Alerts</button>
+              </div>
+            </div>
+            <div class="tab-pane active" data-tab-pane="overview-processed">
+              <div class="table-wrap"><table><thead><tr><th>Timestamp</th><th>Order ID</th><th>Event type</th><th>Previous</th><th>Current</th><th>Stage</th><th>Total delivery</th><th></th></tr></thead><tbody id="ovProcessedBody"></tbody></table></div>
+            </div>
+            <div class="tab-pane" data-tab-pane="overview-states">
+              <div class="table-wrap"><table><thead><tr><th>Order ID</th><th>Current status</th><th>Previous</th><th>Last updated</th><th>Total delivery</th><th></th></tr></thead><tbody id="ovStatesBody"></tbody></table></div>
+            </div>
+            <div class="tab-pane" data-tab-pane="overview-exceptions">
+              <div class="table-wrap"><table><thead><tr><th>Timestamp</th><th>Order ID</th><th>Exception type</th><th>Alert type</th><th>Error</th><th></th></tr></thead><tbody id="ovExceptionsBody"></tbody></table></div>
+            </div>
+          </section>
+        </section>
+
+        <section class="page" data-page-section="events">
+          <section class="panel">
+            <div class="panel-heading">
+              <div><span class="eyebrow">LIVE EVENT STREAM</span><h2>Processed events, states and exceptions</h2><p class="panel-subtext">New records arrive over WebSocket without a page refresh. Tables keep a bounded recent view.</p></div>
+              <div class="inline-controls">
+                <label class="switch-label"><input type="checkbox" id="eventsAutoScroll" checked> Follow newest</label>
+                <button class="btn small" id="eventsRefreshBtn">Refresh</button>
+              </div>
+            </div>
+            <div class="tabs" data-tabs="live">
+              <button class="tab active" data-tab="processed">Processed Events</button>
+              <button class="tab" data-tab="states">Order States</button>
+              <button class="tab" data-tab="exceptions">Exceptions &amp; Alerts</button>
+            </div>
+            <div class="tab-pane active" data-tab-pane="live-processed">
+              <div class="table-wrap tall"><table><thead><tr><th>Timestamp</th><th>Order ID</th><th>Event type</th><th>Previous</th><th>Current</th><th>Stage duration</th><th>Total delivery</th><th></th></tr></thead><tbody id="liveProcessedBody"></tbody></table></div>
+            </div>
+            <div class="tab-pane" data-tab-pane="live-states">
+              <div class="table-wrap tall"><table><thead><tr><th>Order ID</th><th>Current status</th><th>Previous</th><th>Last updated</th><th>Total delivery</th><th></th></tr></thead><tbody id="liveStatesBody"></tbody></table></div>
+            </div>
+            <div class="tab-pane" data-tab-pane="live-exceptions">
+              <div class="table-wrap tall"><table><thead><tr><th>Timestamp</th><th>Order ID</th><th>Exception type</th><th>Alert type</th><th>Category</th><th>Error</th><th></th></tr></thead><tbody id="liveExceptionsBody"></tbody></table></div>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading"><div><span class="eyebrow">MONITORING ACTIVITY</span><h2>Backend activity</h2></div><button class="btn small" id="activityRefreshBtn">Refresh log</button></div>
+            <div class="activity-log tall" id="activityLogLive"></div>
+          </section>
+        </section>
+
+        <section class="page" data-page-section="orders">
+          <div class="orders-layout">
+            <section class="panel orders-directory">
+              <div class="panel-heading compact"><div><span class="eyebrow">ORDER DIRECTORY</span><h2>Known orders</h2></div><button class="btn small" id="ordersRefreshBtn">Refresh</button></div>
+              <div class="field-row"><input id="orderSearchInput" type="search" placeholder="Search order ID"><label class="switch-label"><input type="checkbox" id="activeOrdersOnly"> Active only</label></div>
+              <div class="table-wrap tall"><table><thead><tr><th>Order</th><th>Status</th><th>Updated</th></tr></thead><tbody id="ordersList"></tbody></table></div>
+            </section>
+            <section class="panel">
+              <div class="panel-heading"><div><span class="eyebrow">ORDER JOURNEY</span><h2>Lifecycle timeline</h2></div><div class="inline-controls"><select id="ordersOrderSelect" aria-label="Choose an order"></select><button class="btn small" id="ordersOrderLoad">View</button></div></div>
+              <div id="ordersSummary" class="order-summary empty">Choose an order to inspect its journey.</div>
+              <div id="ordersTimeline" class="timeline empty-timeline">No order selected.</div>
+              <div class="order-events-panel">
+                <h3>Processed lifecycle events</h3>
+                <div class="table-wrap"><table><thead><tr><th>Event time</th><th>Event type</th><th>Previous</th><th>Current</th><th>Stage duration</th><th></th></tr></thead><tbody id="ordersEventsBody"></tbody></table></div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="page" data-page-section="exceptions">
+          <section class="panel">
+            <div class="panel-heading">
+              <div><span class="eyebrow">EXCEPTIONS &amp; ALERTS</span><h2>Validation failures, late events and delay alerts</h2><p class="panel-subtext">Delay alerts are operational warnings. Validation and lifecycle problems are processing exceptions.</p></div>
+              <button class="btn small" id="exceptionsRefreshBtn">Refresh</button>
+            </div>
+            <div class="summary-strips">
+              <div><span>Exception records</span><strong id="exceptionCount">N/A</strong></div>
+              <div><span>Delay alerts</span><strong id="delayAlertCount">N/A</strong></div>
+              <div><span>Technical consumer group</span><strong class="tech-only" id="exceptionsGroup">--</strong><strong class="demo-only">Independent dashboard monitor</strong></div>
+            </div>
+            <div class="table-wrap tall"><table><thead><tr><th>Timestamp</th><th>Order ID</th><th>Exception type</th><th>Alert type</th><th>Category</th><th>Error</th><th></th></tr></thead><tbody id="exceptionsPageBody"></tbody></table></div>
+          </section>
+        </section>
+
+        <section class="page" data-page-section="flink">
+          <div class="stat-grid">
+            <article class="stat-card"><span>Job state</span><strong id="flinkJobState">N/A</strong><small id="flinkJobName">Ecommerce Order Lifecycle Processor</small></article>
+            <article class="stat-card"><span>Running duration</span><strong id="flinkDuration">N/A</strong><small>Current attempt</small></article>
+            <article class="stat-card"><span>Tasks</span><strong id="flinkTasks">N/A</strong><small>Running / total</small></article>
+            <article class="stat-card"><span>TaskManagers</span><strong id="flinkTaskmanagers">N/A</strong><small id="flinkSlots">Slots --</small></article>
+          </div>
+          <div class="two-column">
+            <section class="panel">
+              <div class="panel-heading"><div><span class="eyebrow">FLINK RUNTIME</span><h2>Job and cluster status</h2></div><button class="btn small" id="flinkRefreshBtn">Refresh Flink</button></div>
+              <div class="detail-list">
+                <div><span>Flink REST</span><strong id="flinkRestUrl">--</strong></div>
+                <div><span>Flink version</span><strong id="flinkVersion">--</strong></div>
+                <div><span>Job ID</span><strong class="mono tech-only" id="flinkJobId">--</strong><strong class="demo-only">Streaming processor active</strong></div>
+                <div><span>Running jobs</span><strong id="flinkJobsRunning">--</strong></div>
+                <div><span>Finished jobs</span><strong id="flinkJobsFinished">--</strong></div>
+              </div>
+              <div class="button-row">
+                <button class="btn primary" id="flinkSubmitBtn">Submit Flink Job</button>
+                <button class="btn danger-outline" id="flinkStopBtn">Stop Flink Job</button>
+              </div>
+              <p class="panel-footnote">Stopping cancels only the project job. It does not stop the Flink cluster.</p>
+            </section>
+            <section class="panel">
+              <div class="panel-heading"><div><span class="eyebrow">RECOVERY</span><h2>Checkpoints</h2></div><span class="status-chip neutral small" id="checkpointChip"><span class="status-dot"></span><span id="checkpointStatus">Unknown</span></span></div>
+              <div class="stat-grid compact">
+                <article class="stat-card"><span>Latest checkpoint</span><strong id="checkpointId">N/A</strong><small id="checkpointTime">--</small></article>
+                <article class="stat-card"><span>State size</span><strong id="checkpointSize">N/A</strong><small id="checkpointDuration">--</small></article>
+                <article class="stat-card"><span>Completed</span><strong id="checkpointCompleted">N/A</strong><small id="checkpointRestored">Restored --</small></article>
+              </div>
+              <div class="table-wrap"><table><thead><tr><th>ID</th><th>Status</th><th>Triggered</th><th>Size</th><th>Duration</th></tr></thead><tbody id="checkpointHistoryBody"></tbody></table></div>
+              <p class="panel-footnote">Checkpoint history is read from the Flink REST API. It confirms the job can recover to a durable local state snapshot.</p>
+            </section>
+          </div>
+        </section>
+
+        <section class="page" data-page-section="infrastructure">
+          <section class="panel">
+            <div class="panel-heading">
+              <div><span class="eyebrow">QUICK CONTROLS</span><h2>Infrastructure operations</h2><p class="panel-subtext">Only the Kafka and Flink containers for this project are managed. No volumes or checkpoint data are deleted.</p></div>
+              <div class="button-row">
+                <button class="btn small" id="refreshInfraBtn">Refresh Infrastructure</button>
+                <button class="btn small" id="refreshFlinkBtn">Refresh Flink Status</button>
+              </div>
+            </div>
+            <div class="button-row wrap">
+              <button class="btn primary" id="startInfraBtn">Start Docker Infrastructure</button>
+              <button class="btn danger-outline" id="stopInfraBtn">Stop Docker Infrastructure</button>
+              <button class="btn primary" id="submitFlinkBtn">Submit Flink Job</button>
+              <button class="btn danger-outline" id="stopFlinkBtn">Stop Flink Job</button>
+            </div>
+            <div class="infra-grid">
+              <article class="service-card" data-service-card="docker"><div class="service-head"><span>Docker Engine</span><span class="health-dot" data-health="docker"></span></div><strong id="infraDocker">Checking</strong><small id="infraDockerDetail">--</small></article>
+              <article class="service-card" data-service-card="kafka"><div class="service-head"><span>Kafka broker</span><span class="health-dot" data-health="kafka"></span></div><strong id="infraKafka">Checking</strong><small id="infraKafkaDetail">--</small></article>
+              <article class="service-card" data-service-card="jobmanager"><div class="service-head"><span>Flink JobManager</span><span class="health-dot" data-health="jobmanager"></span></div><strong id="infraJm">Checking</strong><small>Port 18081</small></article>
+              <article class="service-card" data-service-card="taskmanager"><div class="service-head"><span>Flink TaskManager</span><span class="health-dot" data-health="taskmanager"></span></div><strong id="infraTm">Checking</strong><small id="infraTmDetail">--</small></article>
+              <article class="service-card" data-service-card="job"><div class="service-head"><span>Streaming job</span><span class="health-dot" data-health="flink"></span></div><strong id="infraJob">Checking</strong><small id="infraJobDetail">--</small></article>
+            </div>
+          </section>
+
+          <div class="two-column">
+            <section class="panel">
+              <div class="panel-heading compact"><div><span class="eyebrow">KAFKA METADATA</span><h2>Project topics</h2></div><span class="tech-only" id="kafkaBootstrap">--</span></div>
+              <div class="table-wrap"><table><thead><tr><th>Topic</th><th>Exists</th><th>Partitions</th><th>Replication</th><th>In sync</th></tr></thead><tbody id="topicRows"></tbody></table></div>
+              <div class="consumer-list" id="consumerList"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-heading"><div><span class="eyebrow">DASHBOARD ACTIVITY</span><h2>Operational log</h2></div><button class="btn small" id="activityRefreshBtn2">Refresh</button></div>
+              <div class="activity-log tall" id="activityLog"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="page" data-page-section="architecture">
+          <section class="panel">
+            <div class="panel-heading"><div><span class="eyebrow">SYSTEM ARCHITECTURE</span><h2>Data path and monitoring path</h2><p class="panel-subtext">Blue shows the order-event data path. Purple shows the Flink processing boundary. Cyan shows independent result consumption and dashboard monitoring.</p></div></div>
+            <div class="architecture-larger">
+              <div class="arch-lane">
+                <div class="lane-label">DATA PATH</div>
+                <div class="arch-row">
+                  <div class="arch-node"><span class="node-tag">GENERATE</span><strong>Python Event Generator</strong><small>Produces realistic lifecycle scenarios through the existing Kafka producer.</small></div>
+                  <span class="arch-arrow">→</span>
+                  <div class="arch-node cyan"><span class="node-tag">SEND</span><strong>Kafka Input Topic</strong><small>ecommerce.order-lifecycle.events</small></div>
+                  <span class="arch-arrow">→</span>
+                  <div class="arch-node purple wide"><span class="node-tag">PROCESS</span><strong>Apache Flink</strong><small>Validation · deduplication · event-time ordering · lifecycle state · duration analytics · delay timers · late-event handling</small></div>
+                  <span class="arch-arrow">→</span>
+                  <div class="arch-node blue"><span class="node-tag">PUBLISH</span><strong>Three Kafka output topics</strong><small>state · processed · exceptions</small></div>
+                  <span class="arch-arrow">→</span>
+                  <div class="arch-node cyan"><span class="node-tag">CONSUME</span><strong>Independent consumers</strong><small>State · Processed · Exceptions</small></div>
+                </div>
+              </div>
+              <div class="arch-lane monitoring-lane">
+                <div class="lane-label">MONITORING &amp; CONTROL</div>
+                <div class="arch-row">
+                  <div class="arch-node"><span class="node-tag">CONTROL</span><strong>Dashboard backend</strong><small>FastAPI · WebSockets · allowlisted Docker operations · managed generator subprocesses</small></div>
+                  <span class="arch-arrow">→</span>
+                  <div class="arch-node cyan"><span class="node-tag">OBSERVE</span><strong>Kafka monitors</strong><small>Dedicated dashboard groups read all three output topics into bounded memory.</small></div>
+                  <span class="arch-arrow">→</span>
+                  <div class="arch-node purple"><span class="node-tag">INSPECT</span><strong>Flink REST API</strong><small>Job state · task counts · checkpoint history · recovery status</small></div>
+                  <span class="arch-arrow">→</span>
+                  <div class="arch-node"><span class="node-tag">PRESENT</span><strong>Live dashboard</strong><small>HTML · CSS · Vanilla JavaScript · WebSocket updates</small></div>
+                </div>
+              </div>
+              <div class="arch-lane recovery-lane">
+                <div class="lane-label">RECOVERY</div>
+                <div class="arch-row">
+                  <div class="arch-node purple"><span class="node-tag">CHECKPOINT</span><strong>Flink state snapshots</strong><small>Completed checkpoints preserve order state, deduplication evidence, pending events and timers.</small></div>
+                  <span class="arch-arrow">→</span>
+                  <div class="arch-node"><span class="node-tag">RESTORE</span><strong>TaskManager restart</strong><small>Bounded restart strategy restores the latest completed checkpoint after a worker failure.</small></div>
+                  <span class="arch-arrow">→</span>
+                  <div class="arch-node green"><span class="node-tag">RESULT</span><strong>At-least-once outputs</strong><small>Kafka sinks can repeat records after recovery; the dashboard retains bounded observed data.</small></div>
+                </div>
+              </div>
+            </div>
+            <div class="concept-grid">
+              <div><span class="tip" title="A message delivery system that receives events and makes them available to processing applications.">?</span><strong>Kafka</strong><p>A message delivery system that receives events and makes them available to processing applications.</p></div>
+              <div><span class="tip" title="The real-time processing engine that checks order events and updates order status.">?</span><strong>Flink</strong><p>The real-time processing engine that checks order events and updates order status.</p></div>
+              <div><span class="tip" title="A saved recovery point that allows the processing job to resume after failure.">?</span><strong>Checkpoint</strong><p>A saved recovery point that allows the processing job to resume after failure.</p></div>
+              <div><span class="tip" title="Helps the processing engine decide how far event-time processing has progressed.">?</span><strong>Watermark</strong><p>Helps the processing engine decide how far event-time processing has progressed.</p></div>
+              <div><span class="tip" title="Prevents the same event from being processed repeatedly.">?</span><strong>Deduplication</strong><p>Prevents the same event from being processed repeatedly.</p></div>
+              <div><span class="tip" title="An order stage that has exceeded its configured time threshold.">?</span><strong>Delay Alert</strong><p>An order stage that has exceeded its configured time threshold.</p></div>
+            </div>
+          </section>
+        </section>
+
+        <section class="page" data-page-section="guide">
+          <section class="panel">
+            <div class="panel-heading"><div><span class="eyebrow">DEMO GUIDE</span><h2>Recommended live demonstration</h2><p class="panel-subtext">This guide uses the real project commands and existing scenario names. Wait times are called out where processing-time or event-time behaviour matters.</p></div></div>
+            <ol class="guide-steps">
+              <li><div><strong>Start infrastructure</strong><p>Use <em>Start Docker Infrastructure</em>. If Kafka and Flink are already running, the dashboard reports that instead of starting them again.</p></div></li>
+              <li><div><strong>Submit the Flink job</strong><p>Use <em>Submit Flink Job</em>. If a project job is already running, the dashboard avoids submitting a duplicate.</p></div></li>
+              <li><div><strong>Confirm health</strong><p>Check the header pipeline status, the Flink job state and the three dashboard monitor consumers.</p></div></li>
+              <li><div><strong>Run the normal flow</strong><p>Select <em>Normal Flow</em> and choose <em>Generate Once</em>. Open Order States and follow the new order through placed, confirmed, packed, shipped, out for delivery and delivered.</p></div></li>
+              <li><div><strong>Observe delivery duration</strong><p>Select the delivered order. The summary shows the event-time total delivery duration when it is available.</p></div></li>
+              <li><div><strong>Run duplicate events</strong><p>Run <em>Duplicate Events</em>. Look for a DUPLICATE_EVENT record in Exceptions &amp; Alerts. The lifecycle must not advance twice for the duplicate.</p></div></li>
+              <li><div><strong>Run out-of-order events</strong><p>Run <em>Out-of-Order Events</em>. Accepted transitions appear in lifecycle order after event-time processing advances.</p></div></li>
+              <li><div><strong>Run late events</strong><p>Run <em>Late Events</em>. The intentionally late event can appear as EVENT_TOO_LATE while the remaining valid events continue.</p></div></li>
+              <li><div><strong>Run invalid events</strong><p>Run <em>Invalid Events</em>. Look for MALFORMED_EVENT and INVALID_LIFECYCLE_TRANSITION records.</p></div></li>
+              <li><div><strong>Observe delay alerts</strong><p>Delay alerts use processing-time timers and thresholds from config/processing_rules.json. Default thresholds are several minutes, so this step can require waiting or a short test configuration. Do not expect an instant alert.</p></div></li>
+              <li><div><strong>Inspect checkpoints</strong><p>Open Flink &amp; Checkpoints. A completed checkpoint appears after roughly one minute of job runtime. The latest checkpoint ID, timestamp and state size come from the Flink REST API.</p></div></li>
+            </ol>
+            <div class="callout">
+              <strong>Scenario isolation</strong>
+              <p>Finite scenarios use timestamps relative to the current run and add a heartbeat. After one finite scenario, the next finite scenario on the same long-lived job can become EVENT_TOO_LATE. For a clean scenario-by-scenario demonstration, cancel and resubmit the project job before each finite scenario. Continuous mode does not have this limitation.</p>
+            </div>
+          </section>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="json-modal" id="jsonModal" aria-hidden="true">
+    <div class="json-dialog" role="dialog" aria-modal="true" aria-labelledby="jsonTitle">
+      <div class="json-head"><h3 id="jsonTitle">Record JSON</h3><button class="icon-btn" id="jsonClose" aria-label="Close JSON">×</button></div>
+      <pre id="jsonContent"></pre>
+    </div>
+  </div>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
