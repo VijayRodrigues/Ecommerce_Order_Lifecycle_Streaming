@@ -1,0 +1,1 @@
+"""Independent Kafka output consumers."""
