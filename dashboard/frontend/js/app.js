@@ -8,7 +8,7 @@
 
   const state = {
     mode: 'demo',
-    page: 'overview',
+    page: 'startup',
     ws: null,
     reconnectTimer: null,
     pollTimer: null,
@@ -20,6 +20,7 @@
     selectedOrderId: null,
     config: null,
     generator: null,
+    startup: null,
   };
 
   const SCENARIO_HELP = {
@@ -624,8 +625,94 @@
     } catch (e) { console.warn('activity', e); }
   }
 
+  function checkClass(value) {
+    const v = String(value || '').toLowerCase();
+    if (v === 'running' || v === 'connected') return 'state-running state-connected';
+    if (v === 'starting') return 'state-starting';
+    if (v === 'failed') return 'state-failed';
+    if (v === 'needs attention') return 'state-needs-attention';
+    return 'state-not-started';
+  }
+
+  function renderStartup(status) {
+    if (!status) return;
+    state.startup = status;
+
+    qsa('[data-check-state]').forEach(el => {
+      const value = status.checks?.[el.dataset.checkState] || 'Not Started';
+      el.textContent = value;
+      el.className = `check-state ${checkClass(value)}`;
+    });
+
+    qsa('#startupSteps li[data-step]').forEach(li => {
+      const step = (status.steps || []).find(s => s.id === li.dataset.step);
+      const stepStatus = step?.status || 'pending';
+      li.className = stepStatus;
+      if (!li.dataset.description) {
+        const original = li.querySelector('p');
+        li.dataset.description = original ? original.textContent : '';
+      }
+      const p = li.querySelector('p');
+      if (p) p.textContent = step?.message || li.dataset.description;
+      const em = li.querySelector('em');
+      if (em) {
+        em.textContent = stepStatus === 'completed' ? 'Done'
+          : stepStatus === 'running' ? 'Running'
+            : stepStatus === 'failed' ? 'Failed'
+              : 'Pending';
+      }
+    });
+
+    const message = qs('#startupMessage');
+    if (message) message.textContent = status.message || '';
+
+    const error = qs('#startupError');
+    if (error) {
+      if (status.error) {
+        error.hidden = false;
+        error.textContent = `Failed step: ${status.error.step || 'unknown'}\n${status.error.message || ''}`;
+      } else {
+        error.hidden = true;
+        error.textContent = '';
+      }
+    }
+
+    const banner = qs('#startupReadyBanner');
+    if (banner) {
+      banner.classList.toggle('show', Boolean(status.demo_ready));
+      if (status.demo_ready) {
+        banner.innerHTML = '<strong>DEMO ENVIRONMENT READY</strong> — open the Overview or any section from the sidebar to run the demo.';
+      }
+    }
+
+    const startBtn = qs('#startDemoBtn');
+    if (startBtn) {
+      startBtn.disabled = Boolean(status.in_progress);
+      startBtn.textContent = status.in_progress ? 'STARTING DEMO ENVIRONMENT…' : 'START DEMO ENVIRONMENT';
+    }
+
+    const wasReady = document.body.dataset.demoReady === 'true';
+    document.body.dataset.demoReady = status.demo_ready ? 'true' : 'false';
+    if (status.demo_ready && !wasReady && state.page === 'startup') {
+      window.setTimeout(() => { if (state.startup?.demo_ready) setPage('overview'); }, 900);
+    }
+  }
+
+  async function loadStartupStatus(refresh = false) {
+    try {
+      const status = refresh
+        ? await api('/api/startup/refresh', { method: 'POST' })
+        : await api('/api/startup/status');
+      renderStartup(status);
+      return status;
+    } catch (e) {
+      console.warn('startup', e);
+      return null;
+    }
+  }
+
   async function refreshAll() {
-    await Promise.allSettled([loadInfrastructure(), loadRecentEvents(), loadOrders(), loadGenerator(), loadActivity()]);
+    await Promise.allSettled([loadInfrastructure(), loadRecentEvents(), loadOrders(), loadGenerator(), loadActivity(), loadStartupStatus()]);
     if (state.selectedOrderId) await loadOrder(state.selectedOrderId);
   }
 
@@ -671,6 +758,7 @@
       if (msg.type === 'connected') { setConnection(true, 'Live connected'); return; }
       if (msg.type === 'ping' || msg.type === 'pong') return;
       if (msg.type === 'metrics') { renderMetrics(msg.data); updateLastUpdate(); return; }
+      if (msg.type === 'startup') { renderStartup(msg.status); return; }
       if (msg.type === 'activity') { renderActivity([msg.entry, ...(state.activities || [])].slice(0, 150)); return; }
       if (['processed', 'state', 'exceptions'].includes(msg.type)) {
         mergeEntry(msg.type, msg.entry);
@@ -710,6 +798,41 @@
   }
 
   function initControls() {
+    qs('#startDemoBtn')?.addEventListener('click', async () => {
+      const btn = qs('#startDemoBtn');
+      if (btn) btn.disabled = true;
+      try {
+        const result = await api('/api/startup/start', { method: 'POST' });
+        if (result?.status === 'already_running') {
+          toast('Startup is already in progress.', 'info');
+        } else {
+          toast('Demo environment startup requested', 'success');
+        }
+        if (result?.detail) renderStartup(result.detail);
+        else await loadStartupStatus();
+      } catch (e) {
+        toast(e?.detail?.message || e.message || 'Startup request failed', 'error');
+        await loadStartupStatus();
+      }
+    });
+
+    qs('#refreshStartupBtn')?.addEventListener('click', async () => {
+      const status = await loadStartupStatus(true);
+      if (status) toast('Startup status refreshed', 'success');
+    });
+
+    qs('#stopDemoBtn')?.addEventListener('click', async () => {
+      const confirmed = await confirmAction(
+        'Stop the demo environment?\n\nThis stops the project Flink job and only the project containers '
+        + 'kafka_kraft_docker, flink-taskmanager and flink-jobmanager. Docker volumes, checkpoints and '
+        + 'savepoints are not deleted, and unrelated containers are not touched.'
+      );
+      if (!confirmed) return;
+      const result = await runAction(() => api('/api/startup/stop', { method: 'POST' }), 'Demo environment stopped');
+      if (result?.detail?.startup) renderStartup(result.detail.startup);
+      else await loadStartupStatus();
+    });
+
     qs('#generatorScenario')?.addEventListener('change', () => {
       qs('#generatorScenarioHelp').textContent = SCENARIO_HELP[qs('#generatorScenario').value] || '';
     });
@@ -780,14 +903,17 @@
     initModal();
     initControls();
     setMode('demo');
-    setPage('overview');
+    setPage('startup');
     setConnection(false, 'Connecting');
     await loadConfig();
+    const startup = await loadStartupStatus(true);
     await refreshAll();
+    if (startup?.demo_ready) setPage('overview');
     connectWebSocket();
     state.pollTimer = setInterval(() => {
       loadInfrastructure();
       loadGenerator();
+      loadStartupStatus();
       if (state.page === 'overview' || state.page === 'events' || state.page === 'exceptions') loadRecentEvents();
       if (state.page === 'orders') loadOrders();
       loadActivity();

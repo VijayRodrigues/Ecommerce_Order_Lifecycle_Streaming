@@ -2214,30 +2214,6 @@ body[data-mode="demo"] .output-list code {
   }
 }
 
-:root {
-  color-scheme: dark;
-  --bg: #07101f;
-  --bg-soft: #0a1528;
-  --panel: rgba(12, 26, 47, 0.86);
-  --panel-strong: #0d1d34;
-  --panel-raised: #112440;
-  --border: rgba(125, 162, 210, 0.16);
-  --border-strong: rgba(125, 180, 240, 0.28);
-  --text: #e8f1ff;
-  --muted: #8da3c0;
-  --muted-2: #647b99;
-  --blue: #4da2ff;
-  --cyan: #2ed6d1;
-  --green: #35d39a;
-  --yellow: #f4c95d;
-  --red: #ff6b7d;
-  --purple: #a78bfa;
-  --shadow: 0 22px 60px rgba(0, 0, 0, 0.28);
-  --radius: 16px;
-  --radius-sm: 10px;
-  --mono: "Cascadia Code", "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-}
-
 /* Startup landing */
 .startup-page.active { display: block; }
 .startup-hero { padding: 20px; }

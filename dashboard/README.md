@@ -18,23 +18,22 @@ A local web control centre for the `Ecommerce_Order_Lifecycle_Streaming` pipelin
 
 ## Start Demo Environment (in-dashboard orchestration)
 
-On first load, if the environment is not ready, the dashboard shows a startup landing panel with component checks and a **START DEMO ENVIRONMENT** button.
+On first load, if the environment is not ready, the dashboard shows a startup landing panel with component checks and a **START DEMO ENVIRONMENT** button. The same screen is always reachable from the sidebar via **Demo Setup**.
 
 **Component checks (actual state):** Docker Engine, Kafka, Flink JobManager, Flink TaskManager, Kafka input topic, three Kafka output topics, Flink streaming job, dashboard Kafka monitors. States: `Not Started`, `Starting`, `Connected`, `Running`, `Failed`, `Needs Attention`. **Refresh Status** is non-destructive.
 
 **Startup sequence (sequential, idempotent):**
-1. Check Docker Engine availability
-2. Start existing Kafka service from `F:\DockerLab` only if not running (`docker compose -f ... up -d`)
-3. Wait for Kafka readiness/broker reachability
-4. Verify required Kafka topics exist (input + state/processed/exceptions)
-5. Start existing Flink services from `F:\DockerLab` only if not running
-6. Wait for Flink JobManager readiness and TaskManager registration
-7. Reuse running project Flink job if present; otherwise submit existing job via existing mechanism
-8. Wait for job to reach `RUNNING`
-9. Start/connect dashboard Kafka monitors (idempotent; no duplicate threads)
-10. Verify live monitoring/pipeline checks → **DEMO ENVIRONMENT READY**
+1. Checking Docker — verify Docker Engine availability
+2. Starting Kafka — start the existing Kafka service from `F:\DockerLab` only if not running (`docker compose -f ... up -d`)
+3. Waiting for Kafka — wait for broker readiness/reachability
+4. Verifying topics — confirm the input topic and three output topics exist
+5. Starting Flink — start existing Flink services from `F:\DockerLab` only if not running
+6. Checking TaskManager — wait for Flink JobManager readiness and TaskManager registration
+7. Checking Flink job — reuse a running project job, otherwise submit the existing job via the existing mechanism
+8. Connecting dashboard consumers — start/connect the three dashboard Kafka monitors (idempotent; no duplicate threads)
+9. Verifying live monitoring — confirm pipeline checks → **DEMO ENVIRONMENT READY**
 
-Progress steps and plain-English messages update in real time (WebSocket + polling). Duplicate startup requests are rejected safely while in progress. On failure, the failed step and reason are shown; **Retry Startup** runs the sequence again. Partially running services/jobs are reused when possible.
+Progress steps and plain-English messages update in real time (WebSocket + polling). Duplicate startup requests are rejected safely while in progress. On failure, the failed step and reason are shown and the components that did start remain listed; press **START DEMO ENVIRONMENT** again to retry safely (already-running services/jobs are reused). When readiness succeeds, the dashboard shows **DEMO ENVIRONMENT READY** and switches to the Overview; all sidebar sections (Overview, Live Events, Order States, Exceptions & Alerts, Flink & Checkpoints, Infrastructure, Architecture, Demo Guide, Demo Setup) remain available.
 
 **Safe shutdown:** **Stop Demo Environment** (with confirmation) stops the project Flink job and stops only project containers `kafka_kraft_docker`, `flink-taskmanager`, `flink-jobmanager`. No `docker compose down`, no volume/checkpoint/savepoint deletion, no unrelated containers. Infrastructure is not stopped automatically when the browser closes.
 
